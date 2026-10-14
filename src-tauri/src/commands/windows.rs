@@ -35,7 +35,10 @@ pub fn open_project_window(app: AppHandle, store: State<Store>, id: String) -> A
             .min_inner_size(960.0, 640.0)
             .center();
         #[cfg(target_os = "macos")]
-        let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+        let builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 22.0));
         builder.build()?;
         store.write(|d| {
             find_project_mut(d, &id)?.last_opened_at = Some(Utc::now());
