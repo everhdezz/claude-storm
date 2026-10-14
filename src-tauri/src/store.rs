@@ -1,0 +1,62 @@
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use crate::error::{AppError, AppResult};
+use crate::models::{AppData, Project};
+
+/// JSON-file backed store shared by every window through Tauri state.
+pub struct Store {
+    path: PathBuf,
+    data: Mutex<AppData>,
+}
+
+impl Store {
+    /// Loads the store from disk, starting empty when the file does not exist yet.
+    pub fn load(dir: PathBuf) -> AppResult<Self> {
+        fs::create_dir_all(&dir)?;
+        let path = dir.join("devhub.json");
+        let data = if path.exists() {
+            let raw = fs::read_to_string(&path)?;
+            serde_json::from_str(&raw).unwrap_or_else(|err| {
+                let backup = dir.join("devhub.corrupt.json");
+                let _ = fs::copy(&path, &backup);
+                eprintln!("devhub.json could not be parsed ({err}); backed up to {backup:?}");
+                AppData::default()
+            })
+        } else {
+            AppData::default()
+        };
+        Ok(Self { path, data: Mutex::new(data) })
+    }
+
+    /// Runs a read-only closure against the current data.
+    pub fn read<T>(&self, f: impl FnOnce(&AppData) -> T) -> T {
+        let guard = self.data.lock().expect("store poisoned");
+        f(&guard)
+    }
+
+    /// Runs a mutating closure and persists the result atomically.
+    pub fn write<T>(&self, f: impl FnOnce(&mut AppData) -> AppResult<T>) -> AppResult<T> {
+        let mut guard = self.data.lock().expect("store poisoned");
+        let result = f(&mut guard)?;
+        let tmp = self.path.with_extension("json.tmp");
+        fs::write(&tmp, serde_json::to_string_pretty(&*guard)?)?;
+        fs::rename(&tmp, &self.path)?;
+        Ok(result)
+    }
+
+    /// Returns a clone of a project by id.
+    pub fn project(&self, id: &str) -> AppResult<Project> {
+        self.read(|d| d.projects.iter().find(|p| p.id == id).cloned())
+            .ok_or_else(|| AppError::NotFound(format!("project {id}")))
+    }
+}
+
+/// Finds a mutable project by id inside the data document.
+pub fn find_project_mut<'a>(data: &'a mut AppData, id: &str) -> AppResult<&'a mut Project> {
+    data.projects
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("project {id}")))
+}
