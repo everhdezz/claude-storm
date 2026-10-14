@@ -1,0 +1,35 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 8px;
+  cursor: default;
+}
+
+.row:hover,
+.child:hover {
+  background: var(--dh-hover);
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--mantine-color-gray-5);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 2px 44px;
+}

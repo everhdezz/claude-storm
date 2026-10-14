@@ -9,7 +9,8 @@ function dotColor(processes: ProcessInfo[]): string {
 }
 
 /** Small colored circle summarizing process state. */
-export function ProcessStatusDot({ processes }: { processes: ProcessInfo[] }) {
-  if (processes.length === 0) return null;
-  return <span style={{ width: 8, height: 8, borderRadius: 4, background: dotColor(processes), display: "inline-block", flexShrink: 0 }} />;
+export function ProcessStatusDot({ processes, keepSpace = false }: { processes: ProcessInfo[]; keepSpace?: boolean }) {
+  if (processes.length === 0 && !keepSpace) return null;
+  const background = processes.length === 0 ? "transparent" : dotColor(processes);
+  return <span style={{ width: 8, height: 8, borderRadius: 4, background, display: "inline-block", flexShrink: 0 }} />;
 }

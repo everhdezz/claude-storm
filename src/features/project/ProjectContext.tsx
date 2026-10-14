@@ -8,7 +8,10 @@ export interface ProjectContextValue {
   gitErrors: Record<string, string>;
   refreshGit: (repoId?: string) => Promise<void>;
   processes: Record<string, ProcessInfo>;
-  showLogs: (repoId: string, processId?: string) => void;
+  selectedService: string | null;
+  selectService: (processId: string) => void;
+  revealService: (processId: string) => void;
+  openTerminalAt: (cwd: string) => void;
 }
 
 export const ProjectContext = createContext<ProjectContextValue | null>(null);

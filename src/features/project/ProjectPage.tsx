@@ -1,29 +1,32 @@
 import { useState } from "react";
 import { Center, Loader, Text } from "@mantine/core";
+import { IconFolder, IconMessages, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
 import { Outlet, useParams } from "react-router";
-import { LogsPanel } from "../processes/LogsPanel";
+import { isActive } from "../../api/processes";
+import { Island } from "../../components/ide/Island";
+import { Splitter } from "../../components/ide/Splitter";
+import { ToolStripe, type StripeItem } from "../../components/ide/ToolStripe";
+import ide from "../../components/ide/ide.module.css";
+import { ChatsTool } from "../chats/ChatsTool";
 import { useProcesses } from "../processes/useProcesses";
+import { ProjectsTool } from "../projects-tool/ProjectsTool";
+import { ServicesTool } from "../services/ServicesTool";
+import { StatusBar } from "../status/StatusBar";
+import { TerminalTool } from "../terminal/TerminalTool";
 import { ProjectContext } from "./ProjectContext";
-import { ProjectSidebar } from "./ProjectSidebar";
 import { useGitStatuses } from "./useGitStatuses";
+import { type BottomTool, type LeftTool, useLayoutPrefs } from "./useLayoutPrefs";
 import { useProject } from "./useProject";
-import classes from "./project.module.css";
 
-/** Root screen of a project window: sidebar, routed center area and bottom panels. */
+/** Root of a project window: JetBrains-style tool stripe, islands and status bar. */
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const { project, error } = useProject(projectId);
   const git = useGitStatuses(project?.repos ?? []);
-  const { processes, forget } = useProcesses(projectId);
-  const [logsExpanded, setLogsExpanded] = useState(false);
-  const [logsRepoId, setLogsRepoId] = useState<string | null>(null);
-  const [focusProcessId, setFocusProcessId] = useState<string | null>(null);
-
-  function showLogs(repoId: string, processId?: string) {
-    setLogsRepoId(repoId);
-    setFocusProcessId(processId ?? null);
-    setLogsExpanded(true);
-  }
+  const { processes } = useProcesses(projectId);
+  const layout = useLayoutPrefs();
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
 
   if (error) {
     return (
@@ -39,6 +42,28 @@ export function ProjectPage() {
       </Center>
     );
   }
+
+  const running = Object.values(processes).filter(isActive).length;
+  const { prefs } = layout;
+  const topItems: StripeItem<LeftTool>[] = [
+    { id: "projects", label: "Proyectos", icon: IconFolder },
+    { id: "chats", label: "Chats", icon: IconMessages },
+  ];
+  const bottomItems: StripeItem<BottomTool>[] = [
+    { id: "terminal", label: "Terminal", icon: IconTerminal2 },
+    { id: "services", label: "Servicios", icon: IconPlayerPlay, badge: running > 0 },
+  ];
+
+  function revealService(processId: string) {
+    setSelectedService(processId);
+    layout.showBottom("services");
+  }
+
+  function openTerminalAt(cwd: string) {
+    setTerminalRequest((prev) => ({ cwd, seq: (prev?.seq ?? 0) + 1 }));
+    layout.showBottom("terminal");
+  }
+
   return (
     <ProjectContext.Provider
       value={{
@@ -47,26 +72,68 @@ export function ProjectPage() {
         gitErrors: git.errors,
         refreshGit: git.refresh,
         processes,
-        showLogs,
+        selectedService,
+        selectService: setSelectedService,
+        revealService,
+        openTerminalAt,
       }}
     >
-      <div className={classes.shell}>
-        <ProjectSidebar />
-        <div className={classes.center}>
-          <div className={classes.routed}>
-            <Outlet />
+      <div className={ide.window}>
+        <ToolStripe
+          top={topItems}
+          bottom={bottomItems}
+          activeTop={prefs.left}
+          activeBottom={prefs.bottom}
+          onTop={layout.toggleLeft}
+          onBottom={layout.toggleBottom}
+        />
+        <div className={ide.workspace}>
+          <div className={ide.topRow}>
+            {prefs.left === "projects" && <ProjectsTool style={{ width: prefs.leftWidth, flexShrink: 0 }} />}
+            {prefs.left === "chats" && <ChatsTool style={{ width: prefs.leftWidth, flexShrink: 0 }} />}
+            {prefs.left && (
+              <Splitter
+                direction="horizontal"
+                value={prefs.leftWidth}
+                min={200}
+                max={640}
+                onChange={(leftWidth) => layout.resize({ leftWidth })}
+              />
+            )}
+            <Island style={{ flex: 1 }}>
+              <Outlet />
+            </Island>
           </div>
-          <LogsPanel
-            repos={project.repos}
-            processes={processes}
-            activeRepoId={logsRepoId}
-            focusProcessId={focusProcessId}
-            expanded={logsExpanded}
-            onToggle={() => setLogsExpanded((v) => !v)}
-            onSelectRepo={setLogsRepoId}
-            onForget={forget}
+          {prefs.bottom && (
+            <Splitter
+              direction="vertical"
+              value={prefs.bottomHeight}
+              min={120}
+              max={window.innerHeight - 200}
+              invert
+              onChange={(bottomHeight) => layout.resize({ bottomHeight })}
+            />
+          )}
+          <TerminalTool
+            visible={prefs.bottom === "terminal"}
+            request={terminalRequest}
+            style={{ height: prefs.bottomHeight, flexShrink: 0 }}
           />
+          {prefs.bottom === "services" && (
+            <Island title="Servicios" style={{ height: prefs.bottomHeight, flexShrink: 0 }}>
+              <ServicesTool />
+            </Island>
+          )}
         </div>
+        <StatusBar
+          projectId={project.id}
+          right={
+            <>
+              {running > 0 && <Text size="xs">{running} servicio(s) corriendo</Text>}
+              <Text size="xs">{project.name}</Text>
+            </>
+          }
+        />
       </div>
     </ProjectContext.Provider>
   );

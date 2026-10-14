@@ -103,6 +103,22 @@ export function installMocks(): void {
           return simulateProcess(a.projectId!, a.repoId!, a.commandId!);
         case "check_port":
           return false;
+        case "claude_usage":
+        case "claude_usage_cached":
+          return {
+            profileKey: "default",
+            fetchedAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+            billing: "subscription",
+            error: null,
+            rawScreen: "",
+            bars: [
+              { label: "Current session", percent: 38, resetsText: "3:29pm (America/Chihuahua)", resetsAt: new Date(Date.now() + 75 * 60_000).toISOString() },
+              { label: "Current week (all models)", percent: 47, resetsText: "Oct 17 at 3:59am (America/Chihuahua)", resetsAt: new Date(Date.now() + 63 * 3600_000).toISOString() },
+              { label: "Current week (Fable)", percent: 0, resetsText: "Oct 17 at 4am (America/Chihuahua)", resetsAt: new Date(Date.now() + 63 * 3600_000).toISOString() },
+            ],
+          };
+        case "terminal_open":
+          return { id: `term-${Math.random()}`, projectId: a.projectId, cwd: a.cwd, title: String(a.cwd).split("/").pop() };
         case "list_processes":
         case "process_logs":
           return [];

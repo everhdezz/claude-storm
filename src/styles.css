@@ -17,3 +17,12 @@ textarea,
   user-select: text;
   -webkit-user-select: text;
 }
+
+:root {
+  --dh-window-bg: #2b2d30;
+  --dh-island-bg: #1e1f22;
+  --dh-island-border: #393b40;
+  --dh-hover: #2e3036;
+  --dh-selected: #2e436e;
+  --dh-gap: 6px;
+}

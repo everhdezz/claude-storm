@@ -4,13 +4,34 @@ use std::sync::OnceLock;
 
 const MARKER: &str = "__DEVHUB_ENV__";
 
+/// Variables a parent Claude Code session leaks into child processes; they would make every
+/// `claude` started by DevHub think it is a nested session.
+const LEAKED_SESSION_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_PID",
+    "CLAUDE_EFFORT",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_CODE_VERSION",
+];
+
 /// Environment captured from the user's login shell.
 ///
 /// GUI apps on macOS do not inherit the PATH configured in shell profiles, so tools such as
 /// node, php or claude would not be found without this.
 pub fn login_env() -> &'static HashMap<String, String> {
     static ENV: OnceLock<HashMap<String, String>> = OnceLock::new();
-    ENV.get_or_init(|| capture_login_env().unwrap_or_else(|| std::env::vars().collect()))
+    ENV.get_or_init(|| {
+        let mut env = capture_login_env().unwrap_or_else(|| std::env::vars().collect());
+        env.retain(|k, _| !LEAKED_SESSION_VARS.contains(&k.as_str()));
+        env
+    })
 }
 
 /// Runs the login shell once and parses its environment.

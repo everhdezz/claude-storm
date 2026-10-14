@@ -1,44 +1,6 @@
-.shell {
-  display: flex;
-  height: 100%;
-}
-
-.sidebar {
-  width: 290px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--mantine-color-dark-5);
-  background: var(--mantine-color-dark-8);
-}
-
-.sidebarHeader {
-  padding: 14px 14px 8px;
-}
-
-.center {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .content {
   flex: 1;
   min-height: 0;
-}
-
-.repoItem {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.repoItem:hover {
-  background: var(--mantine-color-dark-6);
 }
 
 .pageHeader {
@@ -46,13 +8,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--mantine-color-dark-5);
-}
-
-.routed {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dh-island-border);
 }
