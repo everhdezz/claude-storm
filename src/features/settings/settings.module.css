@@ -1,5 +1,6 @@
 .header {
   border-bottom: 1px solid var(--dh-island-border);
+  padding: 14px 16px 14px 22px;
 }
 
 .layout {
