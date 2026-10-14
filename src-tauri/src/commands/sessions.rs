@@ -161,9 +161,9 @@ pub fn session_history(store: State<Store>, session_id: String) -> AppResult<Vec
 
 /// Sends a prompt to a session (resuming its Claude conversation).
 #[tauri::command]
-pub fn send_session_prompt(
+pub async fn send_session_prompt(
     app: AppHandle,
-    manager: State<SessionManager>,
+    manager: State<'_, SessionManager>,
     session_id: String,
     prompt: String,
     model: Option<String>,

@@ -6,10 +6,10 @@ use crate::store::Store;
 
 /// Starts one of a repo's configured commands.
 #[tauri::command]
-pub fn start_command(
+pub async fn start_command(
     app: AppHandle,
-    store: State<Store>,
-    manager: State<ProcessManager>,
+    store: State<'_, Store>,
+    manager: State<'_, ProcessManager>,
     project_id: String,
     repo_id: String,
     command_id: String,

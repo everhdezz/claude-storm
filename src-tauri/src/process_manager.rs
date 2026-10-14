@@ -149,6 +149,8 @@ impl ProcessManager {
             return Err(AppError::msg(format!("\"{}\" is already running", req.label)));
         }
 
+        let runtime = tauri::async_runtime::handle();
+        let _context = runtime.inner().enter();
         let (program, args) = crate::shell_env::shell_invocation(&req.command);
         let mut cmd: Command = crate::shell_env::async_command(&program);
         cmd.args(&args)
@@ -402,6 +404,33 @@ mod integration {
 
         manager.stop(&handle, &info.id).await.unwrap();
         wait_for(&handle, "stopped", |m| m.list("p")[0].status == ProcessStatus::Stopped).await;
+    }
+
+    /// Regression: sync Tauri commands run on the main thread without a Tokio context.
+    #[test]
+    fn spawn_works_outside_a_tokio_runtime() {
+        let app = tauri::test::mock_builder()
+            .manage(ProcessManager::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let handle = app.handle().clone();
+        let info = handle
+            .state::<ProcessManager>()
+            .spawn(
+                &handle,
+                SpawnRequest {
+                    project_id: "p".into(),
+                    repo_id: "r".into(),
+                    command_id: "c".into(),
+                    label: "echo".into(),
+                    command: "echo ok".into(),
+                    cwd: std::env::temp_dir().to_string_lossy().to_string(),
+                    long_running: false,
+                    port: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(info.status, ProcessStatus::Running);
     }
 
     #[test]

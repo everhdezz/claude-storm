@@ -173,6 +173,8 @@ impl SessionManager {
         let account = project_account(&store, &session.project_id)?;
         let (account_vars, cleared_vars) = crate::accounts::account_env(&account)?;
 
+        let runtime = tauri::async_runtime::handle();
+        let _context = runtime.inner().enter();
         let mut cmd = crate::shell_env::async_command(&claude.to_string_lossy());
         cmd.arg("-p")
             .args(["--output-format", "stream-json", "--verbose", "--include-partial-messages"])
