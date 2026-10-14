@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{AppData, Project};
+use crate::models::{AppData, Project, Session, SessionStatus};
 
 /// JSON-file backed store shared by every window through Tauri state.
 pub struct Store {
@@ -16,7 +16,7 @@ impl Store {
     pub fn load(dir: PathBuf) -> AppResult<Self> {
         fs::create_dir_all(&dir)?;
         let path = dir.join("devhub.json");
-        let data = if path.exists() {
+        let mut data: AppData = if path.exists() {
             let raw = fs::read_to_string(&path)?;
             serde_json::from_str(&raw).unwrap_or_else(|err| {
                 let backup = dir.join("devhub.corrupt.json");
@@ -27,6 +27,11 @@ impl Store {
         } else {
             AppData::default()
         };
+        for session in &mut data.sessions {
+            if matches!(session.status, SessionStatus::Working | SessionStatus::Queued) {
+                session.status = SessionStatus::Interrupted;
+            }
+        }
         Ok(Self { path, data: Mutex::new(data) })
     }
 
@@ -50,6 +55,32 @@ impl Store {
     pub fn project(&self, id: &str) -> AppResult<Project> {
         self.read(|d| d.projects.iter().find(|p| p.id == id).cloned())
             .ok_or_else(|| AppError::NotFound(format!("project {id}")))
+    }
+}
+
+impl Store {
+    /// Folder that holds devhub.json and the other app files.
+    pub fn dir(&self) -> PathBuf {
+        self.path.parent().map(PathBuf::from).unwrap_or_default()
+    }
+
+    /// Returns a clone of a session by id.
+    pub fn session(&self, id: &str) -> AppResult<Session> {
+        self.read(|d| d.sessions.iter().find(|s| s.id == id).cloned())
+            .ok_or_else(|| AppError::NotFound(format!("session {id}")))
+    }
+
+    /// Mutates one session and persists, returning its updated copy.
+    pub fn update_session(&self, id: &str, f: impl FnOnce(&mut Session)) -> AppResult<Session> {
+        self.write(|d| {
+            let session = d
+                .sessions
+                .iter_mut()
+                .find(|s| s.id == id)
+                .ok_or_else(|| AppError::NotFound(format!("session {id}")))?;
+            f(session);
+            Ok(session.clone())
+        })
     }
 }
 

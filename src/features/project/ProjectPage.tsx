@@ -9,21 +9,24 @@ import { ToolStripe, type StripeItem } from "../../components/ide/ToolStripe";
 import ide from "../../components/ide/ide.module.css";
 import { ChatsTool } from "../chats/ChatsTool";
 import { useProcesses } from "../processes/useProcesses";
+import { useSessions } from "../sessions/useSessions";
 import { ProjectsTool } from "../projects-tool/ProjectsTool";
 import { ServicesTool } from "../services/ServicesTool";
 import { StatusBar } from "../status/StatusBar";
 import { TerminalTool } from "../terminal/TerminalTool";
 import { ProjectContext } from "./ProjectContext";
+import { ProjectTitleBar } from "./ProjectTitleBar";
 import { useGitStatuses } from "./useGitStatuses";
 import { type BottomTool, type LeftTool, useLayoutPrefs } from "./useLayoutPrefs";
 import { useProject } from "./useProject";
 
 /** Root of a project window: JetBrains-style tool stripe, islands and status bar. */
 export function ProjectPage() {
-  const { projectId = "" } = useParams();
+  const { projectId = "", sessionId = null } = useParams();
   const { project, error } = useProject(projectId);
   const git = useGitStatuses(project?.repos ?? []);
   const { processes } = useProcesses(projectId);
+  const sessions = useSessions(projectId, sessionId);
   const layout = useLayoutPrefs();
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
@@ -45,9 +48,10 @@ export function ProjectPage() {
 
   const running = Object.values(processes).filter(isActive).length;
   const { prefs } = layout;
+  const sessionsWorking = sessions.some((s) => s.status === "working");
   const topItems: StripeItem<LeftTool>[] = [
     { id: "projects", label: "Proyectos", icon: IconFolder },
-    { id: "chats", label: "Chats", icon: IconMessages },
+    { id: "chats", label: "Chats", icon: IconMessages, badge: sessionsWorking },
   ];
   const bottomItems: StripeItem<BottomTool>[] = [
     { id: "terminal", label: "Terminal", icon: IconTerminal2 },
@@ -72,6 +76,7 @@ export function ProjectPage() {
         gitErrors: git.errors,
         refreshGit: git.refresh,
         processes,
+        sessions,
         selectedService,
         selectService: setSelectedService,
         revealService,
@@ -79,6 +84,7 @@ export function ProjectPage() {
       }}
     >
       <div className={ide.window}>
+        <ProjectTitleBar projectId={project.id} projectName={project.name} />
         <ToolStripe
           top={topItems}
           bottom={bottomItems}

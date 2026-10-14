@@ -96,3 +96,55 @@ export interface LogEvent {
   repoId: string;
   line: LogLine;
 }
+
+export type SessionStatus = "idle" | "queued" | "working" | "waiting" | "done" | "error" | "interrupted";
+export type SessionMode = "direct" | "isolated";
+
+export interface Session {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  profileId: string | null;
+  model: string | null;
+  permissionMode: string;
+  repoIds: string[];
+  mode: SessionMode;
+  branch: string | null;
+  status: SessionStatus;
+  claudeSessionId: string;
+  hasConversation: boolean;
+  createdAt: string;
+  lastActivityAt: string;
+  summary: string | null;
+  filesTouched: string[];
+  archived: boolean;
+  lastError: string | null;
+  baseBranches: Record<string, string>;
+}
+
+export type ChatItem =
+  | { kind: "prompt"; text: string; model: string | null; at: string }
+  | { kind: "text"; text: string }
+  | { kind: "toolUse"; id: string; name: string; input: Record<string, unknown> }
+  | { kind: "toolResult"; toolUseId: string; content: string; isError: boolean }
+  | { kind: "result"; ok: boolean; text: string; costUsd: number | null; durationMs: number | null; turns: number | null }
+  | { kind: "notice"; level: "info" | "warn" | "error"; text: string };
+
+export interface NewSessionInput {
+  title: string;
+  description?: string | null;
+  repoIds: string[];
+  model?: string | null;
+  permissionMode?: string;
+  mode: SessionMode;
+}
+
+export interface RepoDiff {
+  repoId: string;
+  repoName: string;
+  base: string;
+  diff: string;
+}
+
+export type WorktreeCleanup = "keep" | "removeWorktree" | "removeWorktreeAndBranch";

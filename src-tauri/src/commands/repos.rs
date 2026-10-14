@@ -9,16 +9,6 @@ use crate::error::{AppError, AppResult};
 use crate::models::{new_id, Repo, RepoCommand};
 use crate::store::{find_project_mut, Store};
 
-/// A git repository found while scanning a parent folder.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepoCandidate {
-    pub name: String,
-    pub path: String,
-    pub already_added: bool,
-    pub detection: Detection,
-}
-
 /// Editable fields of a repo sent back from the UI.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,28 +36,6 @@ fn folder_name(path: &Path) -> String {
 #[tauri::command]
 pub fn detect_repo(path: String) -> AppResult<Detection> {
     Ok(detect::detect(&canonical(&path)?))
-}
-
-/// Scans a parent folder for git repositories and flags the ones already in the project.
-#[tauri::command]
-pub async fn scan_repos(store: State<'_, Store>, project_id: String, root: String) -> AppResult<Vec<RepoCandidate>> {
-    let root = canonical(&root)?;
-    let existing: Vec<String> = store.project(&project_id)?.repos.into_iter().map(|r| r.path).collect();
-    let found = tauri::async_runtime::spawn_blocking(move || detect::find_git_repos(&root, 3))
-        .await
-        .map_err(|e| AppError::msg(e.to_string()))?;
-    Ok(found
-        .into_iter()
-        .map(|path| {
-            let text = path.to_string_lossy().to_string();
-            RepoCandidate {
-                name: folder_name(&path),
-                already_added: existing.contains(&text),
-                detection: detect::detect(&path),
-                path: text,
-            }
-        })
-        .collect())
 }
 
 /// Adds folders to a project, detecting each framework; duplicates are ignored.

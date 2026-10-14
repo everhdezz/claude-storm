@@ -79,6 +79,41 @@ impl UsageService {
     }
 }
 
+impl UsageService {
+    /// Updates the default snapshot from the usage Claude Code reports inline after each request.
+    pub fn apply_rate_windows<R: Runtime>(&self, app: &AppHandle<R>, windows: &[crate::sessions::stream::RateWindow]) {
+        let mut cache = self.cache.lock().unwrap();
+        let snapshot = cache.entry("default".into()).or_insert_with(|| UsageSnapshot {
+            profile_key: "default".into(),
+            fetched_at: Utc::now(),
+            bars: Vec::new(),
+            raw_screen: String::new(),
+            error: None,
+            billing: "subscription",
+        });
+        for w in windows {
+            let label = match w.key.as_str() {
+                "five_hour" => "Current session",
+                "seven_day" => "Current week (all models)",
+                _ => continue,
+            };
+            let percent = (w.utilization * 100.0).round().clamp(0.0, 100.0) as u8;
+            match snapshot.bars.iter_mut().find(|b| b.label == label) {
+                Some(bar) => {
+                    bar.percent = percent;
+                    if w.resets_at.is_some() {
+                        bar.resets_at = w.resets_at;
+                    }
+                }
+                None => snapshot.bars.push(UsageBar { label: label.into(), percent, resets_text: None, resets_at: w.resets_at }),
+            }
+        }
+        snapshot.fetched_at = Utc::now();
+        snapshot.error = None;
+        let _ = app.emit(USAGE_UPDATED, &*snapshot);
+    }
+}
+
 /// Runs the PTY probe on a blocking thread and parses the result.
 async fn fetch(target: UsageTarget) -> UsageSnapshot {
     let key = target.key.clone();

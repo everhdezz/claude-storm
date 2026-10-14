@@ -1,6 +1,6 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { ProcessInfo, Project, ProjectSummary } from "../types";
+import type { ChatItem, ProcessInfo, Project, ProjectSummary, Session } from "../types";
 
 /** Browser-only fixtures so the UI can be previewed outside Tauri during development. */
 const projects: Project[] = [
@@ -38,6 +38,61 @@ const projects: Project[] = [
     ],
   },
   { id: "p2", name: "payser-api", createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
+];
+
+/** Builds a fixture session. */
+function fixtureSession(id: string, patch: Partial<Session>): Session {
+  return {
+    id,
+    projectId: "p1",
+    title: "Sesión",
+    description: null,
+    profileId: null,
+    model: null,
+    permissionMode: "acceptEdits",
+    repoIds: ["r1", "r2"],
+    mode: "direct",
+    branch: null,
+    status: "idle",
+    claudeSessionId: id,
+    hasConversation: true,
+    createdAt: new Date().toISOString(),
+    lastActivityAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+    summary: null,
+    filesTouched: [],
+    archived: false,
+    lastError: null,
+    baseBranches: {},
+    ...patch,
+  };
+}
+
+const sessions: Session[] = [
+  fixtureSession("s1", { title: "Arreglar validación del checkout", status: "working", model: "opus", summary: "Revisando CheckoutForm.tsx…" }),
+  fixtureSession("s2", {
+    title: "Endpoint de reportes en la API",
+    status: "done",
+    mode: "isolated",
+    branch: "devhub/endpoint-de-reportes-a1b2c3",
+    repoIds: ["r1"],
+    summary: "Agregué ReportController con tests.",
+    filesTouched: ["a", "b", "c"],
+    lastActivityAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+  }),
+  fixtureSession("s3", { title: "¿Cómo funciona el login?", status: "waiting", model: "haiku", summary: "El login usa Sanctum con…" }),
+];
+
+const history: ChatItem[] = [
+  { kind: "prompt", text: "La validación del checkout deja pasar emails sin dominio. Arréglalo y agrega un test.", model: "opus", at: new Date(Date.now() - 5 * 60_000).toISOString() },
+  { kind: "text", text: "Voy a revisar el formulario del checkout y su esquema de validación." },
+  { kind: "toolUse", id: "t1", name: "Grep", input: { pattern: "email", path: "src/checkout" } },
+  { kind: "toolResult", toolUseId: "t1", content: "src/checkout/CheckoutForm.tsx:42:  email: z.string().min(3),", isError: false },
+  { kind: "toolUse", id: "t2", name: "Edit", input: { file_path: "/private/var/www/html/tickesoft/tickesoft-web/src/checkout/CheckoutForm.tsx", old_string: "  email: z.string().min(3),", new_string: "  email: z.string().email(),\n  emailConfirm: z.string().email()," } },
+  { kind: "toolResult", toolUseId: "t2", content: "ok", isError: false },
+  { kind: "toolUse", id: "t3", name: "Bash", input: { command: "pnpm vitest run checkout" } },
+  { kind: "toolResult", toolUseId: "t3", content: " ✓ checkout.test.ts (4 tests) 212ms\n Test Files  1 passed (1)", isError: false },
+  { kind: "text", text: "Listo. Cambié la regla a `z.string().email()` y agregué un test:\n\n- rechaza `juan@`\n- acepta `juan@mail.com`" },
+  { kind: "result", ok: true, text: "", costUsd: 0.0412, durationMs: 48200, turns: 6 },
 ];
 
 /** Converts a fixture project into the welcome list shape. */
@@ -117,6 +172,10 @@ export function installMocks(): void {
               { label: "Current week (Fable)", percent: 0, resetsText: "Oct 17 at 4am (America/Chihuahua)", resetsAt: new Date(Date.now() + 63 * 3600_000).toISOString() },
             ],
           };
+        case "list_sessions":
+          return sessions;
+        case "session_history":
+          return history;
         case "terminal_open":
           return { id: `term-${Math.random()}`, projectId: a.projectId, cwd: a.cwd, title: String(a.cwd).split("/").pop() };
         case "list_processes":

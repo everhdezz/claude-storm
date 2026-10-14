@@ -2,12 +2,18 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions for the welcome window and every project window",
-  "windows": ["main", "project-*"],
+  "windows": [
+    "main",
+    "project-*"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-set-focus",
     "core:window:allow-set-title",
     "dialog:default",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "notification:default"
   ]
 }

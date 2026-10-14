@@ -17,13 +17,16 @@
     "@tabler/icons-react": "^3.49.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.3",
+    "@tauri-apps/plugin-notification": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2.7.2",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.90.0",
-    "react-router": "^7.18.4"
+    "react-markdown": "^9.0.1",
+    "react-router": "^7.18.4",
+    "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.3",

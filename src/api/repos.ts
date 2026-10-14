@@ -1,4 +1,4 @@
-import type { Detection, GitStatus, Repo, RepoCandidate, RepoPatch } from "../types";
+import type { Detection, GitStatus, Repo, RepoPatch } from "../types";
 import { call } from "./tauri";
 
 /** Detects the framework of a folder without adding it. */
@@ -6,10 +6,6 @@ export function detectRepo(path: string): Promise<Detection> {
   return call("detect_repo", { path });
 }
 
-/** Lists git repositories found below a parent folder. */
-export function scanRepos(projectId: string, root: string): Promise<RepoCandidate[]> {
-  return call("scan_repos", { projectId, root });
-}
 
 /** Adds folders to a project. */
 export function addRepos(projectId: string, paths: string[]): Promise<Repo[]> {

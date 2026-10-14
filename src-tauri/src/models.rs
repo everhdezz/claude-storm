@@ -11,6 +11,85 @@ pub struct AppData {
     pub projects: Vec<Project>,
     #[serde(default)]
     pub jira: Option<JiraSettings>,
+    #[serde(default)]
+    pub sessions: Vec<Session>,
+    #[serde(default)]
+    pub settings: AppSettings,
+}
+
+/// Global preferences.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    #[serde(default = "default_max_parallel")]
+    pub max_parallel_sessions: usize,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self { max_parallel_sessions: default_max_parallel() }
+    }
+}
+
+fn default_max_parallel() -> usize {
+    3
+}
+
+/// Lifecycle of a Claude session as shown on its card.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionStatus {
+    Idle,
+    Queued,
+    Working,
+    Waiting,
+    Done,
+    Error,
+    Interrupted,
+}
+
+/// Whether the session edits the repos in place or inside its own git worktrees.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionMode {
+    Direct,
+    Isolated,
+}
+
+/// A parallel Claude Code conversation inside a project; its history lives in its own file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Session {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    pub permission_mode: String,
+    pub repo_ids: Vec<String>,
+    pub mode: SessionMode,
+    #[serde(default)]
+    pub branch: Option<String>,
+    pub status: SessionStatus,
+    pub claude_session_id: String,
+    #[serde(default)]
+    pub has_conversation: bool,
+    pub created_at: DateTime<Utc>,
+    pub last_activity_at: DateTime<Utc>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub files_touched: Vec<String>,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub base_branches: std::collections::HashMap<String, String>,
 }
 
 fn default_version() -> u32 {

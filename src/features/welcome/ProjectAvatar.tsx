@@ -4,6 +4,7 @@ const COLORS = ["#4b6eaf", "#4f9a6b", "#8a5cc7", "#b3863b", "#3d8fa6", "#b2505c"
 
 interface ProjectAvatarProps {
   name: string;
+  size?: number;
 }
 
 /** Builds two-letter initials from words separated by spaces, dashes or underscores. */
@@ -21,9 +22,10 @@ function colorFor(name: string): string {
 }
 
 /** Square colored badge with the project initials, JetBrains style. */
-export function ProjectAvatar({ name }: ProjectAvatarProps) {
+export function ProjectAvatar({ name, size }: ProjectAvatarProps) {
+  const sizing = size ? { width: size, height: size, fontSize: Math.round(size * 0.42), borderRadius: Math.round(size * 0.25) } : {};
   return (
-    <div className={classes.avatar} style={{ background: colorFor(name) }}>
+    <div className={classes.avatar} style={{ background: colorFor(name), ...sizing }}>
       {initials(name)}
     </div>
   );
