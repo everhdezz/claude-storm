@@ -66,3 +66,33 @@ export interface GitStatus {
   untracked: number;
   conflicted: number;
 }
+
+export type ProcessStatus = "running" | "stopping" | "stopped" | "exited" | "failed";
+
+export interface ProcessInfo {
+  id: string;
+  projectId: string;
+  repoId: string;
+  commandId: string;
+  label: string;
+  command: string;
+  longRunning: boolean;
+  status: ProcessStatus;
+  pid: number | null;
+  port: number | null;
+  ready: boolean;
+  exitCode: number | null;
+  startedAt: string;
+}
+
+export interface LogLine {
+  seq: number;
+  stream: "stdout" | "stderr" | "system";
+  text: string;
+}
+
+export interface LogEvent {
+  processId: string;
+  repoId: string;
+  line: LogLine;
+}

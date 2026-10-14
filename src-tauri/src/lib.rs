@@ -3,20 +3,24 @@ mod detect;
 mod error;
 mod git;
 mod models;
+mod proc_tree;
+mod process_manager;
 mod shell_env;
 mod store;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 
 use commands::projects::notify_projects_changed;
 use commands::windows::project_id_from_label;
+use process_manager::ProcessManager;
 use store::Store;
 
 /// Builds and runs the Tauri application.
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(ProcessManager::default())
         .setup(|app| {
             std::thread::spawn(|| {
                 shell_env::login_env();
@@ -27,7 +31,8 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
-                if project_id_from_label(window.label()).is_some() {
+                if let Some(project_id) = project_id_from_label(window.label()) {
+                    window.app_handle().state::<ProcessManager>().stop_project(project_id);
                     notify_projects_changed(window.app_handle());
                 }
             }
@@ -47,7 +52,20 @@ pub fn run() {
             commands::repos::update_repo,
             commands::repos::redetect_repo,
             commands::git::git_status,
+            commands::processes::start_command,
+            commands::processes::stop_process,
+            commands::processes::list_processes,
+            commands::processes::process_logs,
+            commands::processes::clear_process_logs,
+            commands::processes::forget_process,
+            commands::processes::check_port,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running DevHub");
+        .build(tauri::generate_context!())
+        .expect("error while building DevHub");
+
+    app.run(|handle, event| {
+        if let RunEvent::Exit = event {
+            handle.state::<ProcessManager>().kill_all_blocking();
+        }
+    });
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Project } from "../../types";
+import type { ProcessInfo, Project } from "../../types";
 import type { GitStatusMap } from "./useGitStatuses";
 
 export interface ProjectContextValue {
@@ -7,6 +7,8 @@ export interface ProjectContextValue {
   gitStatuses: GitStatusMap;
   gitErrors: Record<string, string>;
   refreshGit: (repoId?: string) => Promise<void>;
+  processes: Record<string, ProcessInfo>;
+  showLogs: (repoId: string, processId?: string) => void;
 }
 
 export const ProjectContext = createContext<ProjectContextValue | null>(null);

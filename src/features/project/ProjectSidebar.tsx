@@ -2,6 +2,7 @@ import { ScrollArea, SegmentedControl, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import { FrameworkIcon } from "../../components/FrameworkIcon";
 import { GitBadge } from "../../components/GitBadge";
+import { ProcessStatusDot } from "../processes/ProcessStatusDot";
 import { useProjectContext } from "./ProjectContext";
 import classes from "./project.module.css";
 
@@ -33,7 +34,8 @@ export function ProjectSidebar() {
 
 /** Compact list of the project's repos; clicking scrolls to the card. */
 function RepoList() {
-  const { project, gitStatuses } = useProjectContext();
+  const { project, gitStatuses, processes } = useProjectContext();
+  const procs = Object.values(processes);
   if (project.repos.length === 0) {
     return (
       <Text size="sm" c="dimmed" p="md">
@@ -56,6 +58,7 @@ function RepoList() {
             </Text>
             <GitBadge status={gitStatuses[repo.id]} compact />
           </div>
+          <ProcessStatusDot processes={procs.filter((p) => p.repoId === repo.id)} />
         </div>
       ))}
     </Stack>
