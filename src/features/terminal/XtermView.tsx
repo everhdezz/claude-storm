@@ -47,6 +47,7 @@ export function XtermView({ projectId, cwd, visible, onTitle, onExit }: XtermVie
     let disposed = false;
 
     openTerminal(projectId, cwd, term.cols, term.rows, (event) => {
+      if (disposed) return;
       if (event.kind === "output") term.write(event.data);
       else callbacks.current.onExit();
     })

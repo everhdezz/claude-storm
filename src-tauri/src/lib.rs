@@ -34,6 +34,14 @@ pub fn run() {
             });
             let dir = app.path().app_data_dir()?;
             app.manage(Store::load(dir)?);
+            #[cfg(debug_assertions)]
+            if let Ok(id) = std::env::var("DEVHUB_OPEN_PROJECT") {
+                let handle = app.handle().clone();
+                let store = app.state::<Store>();
+                if let Err(err) = commands::windows::open_project_window(handle, store, id) {
+                    eprintln!("DEVHUB_OPEN_PROJECT failed: {err}");
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

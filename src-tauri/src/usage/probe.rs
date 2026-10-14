@@ -20,7 +20,15 @@ pub struct ProbeOutput {
 }
 
 /// Runs `claude`, sends `/usage`, waits for the bars to render and returns the screen.
-pub fn run(claude: &Path, cwd: &Path, env: &HashMap<String, String>, remove_env: &[&str]) -> AppResult<ProbeOutput> {
+///
+/// `accept_trust` may only be true for DevHub's own empty probe folder: trusting it exposes nothing.
+pub fn run(
+    claude: &Path,
+    cwd: &Path,
+    env: &HashMap<String, String>,
+    remove_env: &[&str],
+    accept_trust: bool,
+) -> AppResult<ProbeOutput> {
     let program = claude.to_string_lossy().to_string();
     let mut proc = pty::spawn(&program, &[], cwd, env, remove_env, ROWS, COLS)?;
     let mut reader = proc.master.try_clone_reader().map_err(|e| AppError::msg(e.to_string()))?;
@@ -39,7 +47,7 @@ pub fn run(claude: &Path, cwd: &Path, env: &HashMap<String, String>, remove_env:
     });
 
     let mut screen = Screen::new(buffer);
-    let result = drive(&mut screen, &mut writer);
+    let result = drive(&mut screen, &mut writer, accept_trust);
     let _ = writer.write_all(b"\x1b");
     let _ = proc.child.kill();
     let _ = proc.child.wait();
@@ -47,18 +55,23 @@ pub fn run(claude: &Path, cwd: &Path, env: &HashMap<String, String>, remove_env:
 }
 
 /// Performs the interactive steps, returning an explanatory error when something blocks.
-fn drive(screen: &mut Screen, writer: &mut Box<dyn Write + Send>) -> AppResult<()> {
+fn drive(screen: &mut Screen, writer: &mut Box<dyn Write + Send>, accept_trust: bool) -> AppResult<()> {
     let ready = screen.wait(Duration::from_secs(30), |t| {
         t.contains("for shortcuts") || t.contains('❯') || t.contains("trust this folder") || t.contains("trust the files") || login_needed(t)
     });
-    let text = screen.text();
+    let mut text = screen.text();
+    if accept_trust && needs_trust(&text) {
+        accept_trust_dialog(screen, writer)?;
+        text = screen.text();
+    }
     if !ready {
         return Err(AppError::msg(format!("Claude Code did not become ready in time.\n\n{}", text.trim())));
     }
-    if text.contains("trust this folder") || text.contains("trust the files") {
-        return Err(AppError::msg(
-            "Claude Code asks to trust the working folder. Open `claude` once in that folder and accept, then retry.",
-        ));
+    if needs_trust(&text) {
+        return Err(AppError::msg(format!(
+            "Claude Code asks to trust the working folder. Open `claude` once in that folder and accept, then retry.\n\n{}",
+            text.trim()
+        )));
     }
     if login_needed(&text) {
         return Err(AppError::msg("This Claude profile is not logged in."));
@@ -80,6 +93,31 @@ fn drive(screen: &mut Screen, writer: &mut Box<dyn Write + Send>) -> AppResult<(
     }
     screen.settle(Duration::from_millis(2500), Duration::from_secs(12));
     Ok(())
+}
+
+/// Moves the trust dialog selection to "Yes, I trust this folder" and confirms it.
+fn accept_trust_dialog(screen: &mut Screen, writer: &mut Box<dyn Write + Send>) -> AppResult<()> {
+    let yes_selected = Regex::new(r"❯\s*(?:\d\.\s*)?Yes").unwrap();
+    for _ in 0..3 {
+        if yes_selected.is_match(&screen.text()) {
+            break;
+        }
+        writer.write_all(b"\x1b[B")?;
+        writer.flush()?;
+        screen.wait(Duration::from_millis(800), |t| yes_selected.is_match(t));
+    }
+    if !yes_selected.is_match(&screen.text()) {
+        return Err(AppError::msg("Could not select the trust option for DevHub's probe folder."));
+    }
+    writer.write_all(b"\r")?;
+    writer.flush()?;
+    screen.wait(Duration::from_secs(20), |t| !needs_trust(t) && (t.contains('❯') || t.contains("for shortcuts")));
+    Ok(())
+}
+
+/// Detects Claude Code's folder trust dialog.
+fn needs_trust(text: &str) -> bool {
+    text.contains("trust this folder") || text.contains("trust the files")
 }
 
 /// Heuristic for the first-run login screen.
@@ -150,7 +188,7 @@ mod manual {
     fn real_probe() {
         let cwd = std::env::var("DEVHUB_PROBE_CWD").expect("set DEVHUB_PROBE_CWD");
         let claude = crate::shell_env::which("claude").expect("claude in PATH");
-        let out = super::run(&claude, std::path::Path::new(&cwd), &Default::default(), &["ANTHROPIC_API_KEY"]).unwrap();
+        let out = super::run(&claude, std::path::Path::new(&cwd), &Default::default(), &["ANTHROPIC_API_KEY"], std::env::var("DEVHUB_PROBE_TRUST").is_ok()).unwrap();
         let bars = crate::usage::parser::parse_usage(&out.screen, chrono::Utc::now());
         for b in &bars {
             println!("{} -> {}% resets {:?} ({:?})", b.label, b.percent, b.resets_text, b.resets_at);

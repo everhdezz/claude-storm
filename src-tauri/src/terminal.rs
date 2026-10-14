@@ -81,6 +81,8 @@ impl TerminalManager {
             let _ = channel.send(TerminalEvent::Exit);
         });
 
+        #[cfg(debug_assertions)]
+        eprintln!("[terminal] open {} in {}", info.id, info.cwd);
         self.terms.lock().unwrap().insert(
             info.id.clone(),
             Terminal { info: info.clone(), master: proc.master, writer, child: proc.child },
@@ -108,6 +110,8 @@ impl TerminalManager {
 
     /// Kills the shell and releases the PTY (which hangs up its whole session).
     pub fn close(&self, id: &str) {
+        #[cfg(debug_assertions)]
+        eprintln!("[terminal] close {id}");
         if let Some(mut term) = self.terms.lock().unwrap().remove(id) {
             let _ = term.child.kill();
             let _ = term.child.wait();

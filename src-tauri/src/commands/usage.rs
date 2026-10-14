@@ -1,25 +1,19 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
-use crate::store::Store;
 use crate::usage::service::{UsageService, UsageSnapshot, UsageTarget};
 
-/// Picks a folder Claude Code already trusts: the project's first repo, else the home dir.
-fn probe_cwd(store: &Store, project_id: Option<&str>) -> PathBuf {
-    project_id
-        .and_then(|id| store.project(id).ok())
-        .and_then(|p| p.repos.first().map(|r| PathBuf::from(&r.path)))
-        .or_else(dirs::home_dir)
-        .unwrap_or_else(|| PathBuf::from("/"))
+/// Empty folder owned by DevHub where `/usage` is queried, so no real repo needs to be trusted.
+fn probe_cwd(app: &AppHandle) -> PathBuf {
+    app.path().app_data_dir().map(|d| d.join("claude-probe")).unwrap_or_else(|_| std::env::temp_dir().join("devhub-claude-probe"))
 }
 
 /// Returns plan usage for the default Claude login, refreshing when stale or forced.
 #[tauri::command]
 pub async fn claude_usage(
     app: AppHandle,
-    store: State<'_, Store>,
     usage: State<'_, UsageService>,
     project_id: Option<String>,
     force: bool,
@@ -28,9 +22,11 @@ pub async fn claude_usage(
         key: "default".into(),
         env: HashMap::new(),
         remove_env: vec!["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
-        cwd: probe_cwd(&store, project_id.as_deref()),
+        cwd: probe_cwd(&app),
+        accept_trust: true,
         api_key: false,
     };
+    let _ = project_id;
     Ok(usage.get(&app, target, force).await)
 }
 

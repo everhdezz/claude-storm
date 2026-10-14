@@ -22,6 +22,7 @@ pub struct UsageTarget {
     pub env: HashMap<String, String>,
     pub remove_env: Vec<&'static str>,
     pub cwd: PathBuf,
+    pub accept_trust: bool,
     pub api_key: bool,
 }
 
@@ -83,7 +84,8 @@ async fn fetch(target: UsageTarget) -> UsageSnapshot {
     let key = target.key.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let claude = crate::shell_env::which("claude").ok_or_else(|| AppError::msg("The `claude` CLI was not found in PATH."))?;
-        probe::run(&claude, &target.cwd, &target.env, &target.remove_env)
+        std::fs::create_dir_all(&target.cwd)?;
+        probe::run(&claude, &target.cwd, &target.env, &target.remove_env, target.accept_trust)
     })
     .await
     .map_err(|e| AppError::msg(e.to_string()))
