@@ -17,7 +17,6 @@ import {
   IconPencil,
   IconPlayerPlay,
   IconPlayerStop,
-  IconServerBolt,
   IconTerminal2,
   IconTrash,
   IconWand,
@@ -327,17 +326,14 @@ function RepoNode({ repo, onEdit, groups, currentGroupId, onMove }: RepoNodeProp
         </div>
         <ProcessStatusDot processes={procs} />
         <div className={classes.rowActions} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-          {isNode && (!devCommand || !isActive(processes[processKey(repo.id, devCommand.id)])) && (
-            <Tooltip label="Levantar servidor de pruebas" openDelay={300}>
-              <ActionIcon variant="subtle" color="teal" size="sm" onClick={startDevServer} aria-label="Levantar servidor de pruebas">
-                <IconServerBolt size={15} />
+          {devCommand && <CommandToggle repo={repo} command={devCommand} onRun={run} label={serverLabel(devCommand)} />}
+          {!devCommand && isNode && (
+            <Tooltip label="run dev" openDelay={300}>
+              <ActionIcon variant="subtle" color="teal" size="sm" onClick={startDevServer} aria-label="run dev">
+                <IconPlayerPlay size={14} />
               </ActionIcon>
             </Tooltip>
           )}
-          {isNode && devCommand && isActive(processes[processKey(repo.id, devCommand.id)]) && (
-            <CommandToggle repo={repo} command={devCommand} onRun={run} />
-          )}
-          {!isNode && devCommand && <CommandToggle repo={repo} command={devCommand} onRun={run} />}
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" size="sm" aria-label="Ajustes del repo">
@@ -403,15 +399,26 @@ interface CommandToggleProps {
   repo: Repo;
   command: RepoCommand;
   onRun: (repo: Repo, command: RepoCommand) => void;
+  label?: string;
+}
+
+/** Short name of a server command: "artisan serve", "run dev", "run start", "expo start"… */
+function serverLabel(command: RepoCommand): string {
+  const line = command.command;
+  if (/artisan\s+serve/.test(line)) return "artisan serve";
+  const script = line.match(/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?([\w:.-]+)/);
+  if (script) return `run ${script[1]}`;
+  const npx = line.match(/^npx\s+(\S+\s+\S+)/);
+  return npx ? npx[1]! : command.label;
 }
 
 /** Play/stop button for one command; output goes to the Services tool window. */
-function CommandToggle({ repo, command, onRun }: CommandToggleProps) {
+function CommandToggle({ repo, command, onRun, label }: CommandToggleProps) {
   const { processes, revealService } = useProjectContext();
   const proc = processes[processKey(repo.id, command.id)];
   const active = isActive(proc);
   return (
-    <Tooltip label={`${active ? "Detener" : "Ejecutar"} ${command.label}`} openDelay={300}>
+    <Tooltip label={label ? (active ? `Detener ${label}` : label) : `${active ? "Detener" : "Ejecutar"} ${command.label}`} openDelay={300}>
       <ActionIcon
         variant="subtle"
         color={active ? "red" : "teal"}
