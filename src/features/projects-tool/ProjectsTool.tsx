@@ -35,8 +35,8 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
       style={style}
       actions={
         <>
-          <Tooltip label="Agregar carpeta">
-            <ActionIcon variant="subtle" color="gray" size="sm" onClick={addFolder} aria-label="Agregar carpeta">
+          <Tooltip label="Agregar repo">
+            <ActionIcon variant="subtle" color="gray" size="sm" onClick={addFolder} aria-label="Agregar repo">
               <IconFolderPlus size={15} />
             </ActionIcon>
           </Tooltip>

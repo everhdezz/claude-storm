@@ -64,17 +64,29 @@ export function XtermView({ projectId, cwd, visible, onTitle, onExit }: XtermVie
       if (idRef.current) writeTerminal(idRef.current, data).catch(() => undefined);
     });
     const title = term.onTitleChange((t) => t && callbacks.current.onTitle(t));
-    const observer = new ResizeObserver(() => refit());
+    let frame = 0;
+    let lastBox = "";
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      const key = box ? `${Math.round(box.width)}x${Math.round(box.height)}` : "";
+      if (!box || box.width === 0 || key === lastBox) return;
+      lastBox = key;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(refit);
+    });
     observer.observe(host.current!);
 
     function refit() {
       if (!host.current || host.current.offsetParent === null) return;
-      fit.fit();
-      if (idRef.current) resizeTerminal(idRef.current, term.cols, term.rows).catch(() => undefined);
+      const next = fit.proposeDimensions();
+      if (!next || (next.cols === term.cols && next.rows === term.rows)) return;
+      term.resize(next.cols, next.rows);
+      if (idRef.current) resizeTerminal(idRef.current, next.cols, next.rows).catch(() => undefined);
     }
 
     return () => {
       disposed = true;
+      cancelAnimationFrame(frame);
       observer.disconnect();
       input.dispose();
       title.dispose();
@@ -86,9 +98,12 @@ export function XtermView({ projectId, cwd, visible, onTitle, onExit }: XtermVie
   useEffect(() => {
     if (!visible) return;
     const frame = requestAnimationFrame(() => {
-      fitRef.current?.fit();
       const term = termRef.current;
-      if (term && idRef.current) resizeTerminal(idRef.current, term.cols, term.rows).catch(() => undefined);
+      const next = fitRef.current?.proposeDimensions();
+      if (term && next && (next.cols !== term.cols || next.rows !== term.rows)) {
+        term.resize(next.cols, next.rows);
+        if (idRef.current) resizeTerminal(idRef.current, next.cols, next.rows).catch(() => undefined);
+      }
       term?.focus();
     });
     return () => cancelAnimationFrame(frame);

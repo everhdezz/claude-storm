@@ -23,7 +23,7 @@ export function DashboardPage() {
         <Title order={4}>{project.name}</Title>
         <Group gap="xs">
           <Button size="xs" variant="default" leftSection={<IconFolderPlus size={14} />} onClick={addFolder}>
-            Agregar carpeta
+            Agregar repo
           </Button>
           <Button size="xs" variant="default" leftSection={<IconFolderSearch size={14} />} onClick={() => setScanOpen(true)}>
             Escanear

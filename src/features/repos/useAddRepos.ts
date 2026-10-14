@@ -12,7 +12,7 @@ export async function pickFolder(title: string): Promise<string | null> {
 export function useAddFolder(projectId: string) {
   return async function addFolder() {
     try {
-      const path = await pickFolder("Selecciona la carpeta del repo");
+      const path = await pickFolder("Selecciona el repo a agregar");
       if (!path) return;
       const added = await addRepos(projectId, [path]);
       notifySuccess(added[0] ? `Agregado ${added[0].name}` : "Ese repo ya estaba en el proyecto");

@@ -45,7 +45,7 @@ export function TerminalTool({ visible, request, style }: TerminalToolProps) {
   }
 
   function rename(key: string, title: string) {
-    setTabs((prev) => prev.map((t) => (t.key === key ? { ...t, title } : t)));
+    setTabs((prev) => (prev.some((t) => t.key === key && t.title !== title) ? prev.map((t) => (t.key === key ? { ...t, title } : t)) : prev));
   }
 
   useEffect(() => {
