@@ -137,7 +137,7 @@ export function SessionView() {
           </Group>
           <Group gap={6} mt={2} wrap="nowrap">
             <Badge size="xs" variant="default">
-              {modelLabel(session.model, settings.models)}
+              {modelLabel(session.model, settings.catalog)}
             </Badge>
             {repoNames.map((n) => (
               <Badge key={n} size="xs" variant="light" color="gray">
@@ -215,7 +215,7 @@ export function SessionView() {
           key={session.id}
           placeholder={session.status === "queued" ? "En cola…" : "Continúa la conversación…"}
           defaultModel={session.model}
-          context={`Login por defecto · ${modelLabel(session.model, settings.models)} · ${session.permissionMode}`}
+          context={`Login por defecto · ${modelLabel(session.model, settings.catalog)} · ${session.permissionMode}`}
           busy={isBusy(session)}
           autoFocus
           onSend={send}

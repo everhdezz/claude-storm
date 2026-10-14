@@ -1,4 +1,4 @@
-import type { AccountKind, AppSettings, ClaudeAccount, ModelOption } from "../types";
+import type { AccountKind, AppSettings, CatalogModel, ClaudeAccount } from "../types";
 import { call } from "./tauri";
 
 export const SETTINGS_CHANGED = "settings-changed";
@@ -34,9 +34,24 @@ export function deleteAccount(id: string): Promise<void> {
   return call("delete_account", { id });
 }
 
-/** Saves the list of models offered in pickers. */
-export function saveModels(models: ModelOption[], defaultModel: string | null): Promise<void> {
-  return call("save_models", { models, defaultModel });
+/** Enables or disables a model of Claude Code's catalog. */
+export function setModelEnabled(id: string, enabled: boolean): Promise<void> {
+  return call("set_model_enabled", { id, enabled });
+}
+
+/** Sets the global default model (null lets Claude Code decide). */
+export function setDefaultModel(id: string | null): Promise<void> {
+  return call("set_default_model", { id });
+}
+
+/** Re-reads the model list from Claude Code's /model picker. */
+export function refreshModelCatalog(projectId: string | null): Promise<void> {
+  return call("refresh_model_catalog", { projectId });
+}
+
+/** Models offered in pickers: the enabled ones, as Select options. */
+export function modelOptions(catalog: CatalogModel[]): { value: string; label: string }[] {
+  return catalog.filter((m) => m.enabled).map((m) => ({ value: m.id, label: m.label }));
 }
 
 /** Sets how many sessions may work at once. */

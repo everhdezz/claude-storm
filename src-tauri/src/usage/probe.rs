@@ -29,6 +29,56 @@ pub fn run(
     remove_env: &[&str],
     accept_trust: bool,
 ) -> AppResult<ProbeOutput> {
+    let bar = Regex::new(r"\d+\s*%\s*used").unwrap();
+    run_slash_command(claude, cwd, env, remove_env, accept_trust, "/usage", &|t: &str| bar.is_match(t) && t.contains("Resets"), None)
+}
+
+/// Opens `/model` and scrolls the whole picker, returning every model it lists.
+pub fn read_model_picker(
+    claude: &Path,
+    cwd: &Path,
+    env: &HashMap<String, String>,
+    remove_env: &[&str],
+    accept_trust: bool,
+) -> AppResult<Vec<crate::usage::models::CatalogModel>> {
+    use crate::usage::models::{merge_rows, parse_picker};
+    let mut rows = Vec::new();
+    let mut scroll = |screen: &mut Screen, writer: &mut Box<dyn Write + Send>| -> AppResult<()> {
+        rows.extend(parse_picker(&screen.text()));
+        let mut idle = 0;
+        for step in 0..40 {
+            writer.write_all(b"\x1b[B")?;
+            writer.flush()?;
+            std::thread::sleep(Duration::from_millis(150));
+            screen.pump();
+            let before = merge_rows(rows.clone()).len();
+            rows.extend(parse_picker(&screen.text()));
+            idle = if merge_rows(rows.clone()).len() == before { idle + 1 } else { 0 };
+            if step > before + 2 && idle >= 4 {
+                break;
+            }
+        }
+        Ok(())
+    };
+    run_slash_command(claude, cwd, env, remove_env, accept_trust, "/model", &|t: &str| t.contains("Select model"), Some(&mut scroll))?;
+    let models = merge_rows(rows);
+    if models.is_empty() {
+        return Err(AppError::msg("Could not read any model from /model."));
+    }
+    Ok(models)
+}
+
+/// Runs `claude`, types a slash command and returns the screen once `shown` matches and output settles.
+pub fn run_slash_command(
+    claude: &Path,
+    cwd: &Path,
+    env: &HashMap<String, String>,
+    remove_env: &[&str],
+    accept_trust: bool,
+    command: &str,
+    shown: &dyn Fn(&str) -> bool,
+    after: Option<&mut dyn FnMut(&mut Screen, &mut Box<dyn Write + Send>) -> AppResult<()>>,
+) -> AppResult<ProbeOutput> {
     let program = claude.to_string_lossy().to_string();
     let mut proc = pty::spawn(&program, &[], cwd, env, remove_env, ROWS, COLS)?;
     let mut reader = proc.master.try_clone_reader().map_err(|e| AppError::msg(e.to_string()))?;
@@ -47,7 +97,10 @@ pub fn run(
     });
 
     let mut screen = Screen::new(buffer);
-    let result = drive(&mut screen, &mut writer, accept_trust);
+    let mut result = drive(&mut screen, &mut writer, accept_trust, command, shown);
+    if let (Ok(()), Some(step)) = (&result, after) {
+        result = step(&mut screen, &mut writer);
+    }
     let _ = writer.write_all(b"\x1b");
     let _ = proc.child.kill();
     let _ = proc.child.wait();
@@ -55,7 +108,13 @@ pub fn run(
 }
 
 /// Performs the interactive steps, returning an explanatory error when something blocks.
-fn drive(screen: &mut Screen, writer: &mut Box<dyn Write + Send>, accept_trust: bool) -> AppResult<()> {
+fn drive(
+    screen: &mut Screen,
+    writer: &mut Box<dyn Write + Send>,
+    accept_trust: bool,
+    command: &str,
+    shown: &dyn Fn(&str) -> bool,
+) -> AppResult<()> {
     let ready = screen.wait(Duration::from_secs(30), |t| {
         t.contains("for shortcuts") || t.contains('❯') || t.contains("trust this folder") || t.contains("trust the files") || login_needed(t)
     });
@@ -77,7 +136,7 @@ fn drive(screen: &mut Screen, writer: &mut Box<dyn Write + Send>, accept_trust: 
         return Err(AppError::msg("This Claude profile is not logged in."));
     }
     std::thread::sleep(Duration::from_millis(1200));
-    for ch in "/usage".chars() {
+    for ch in command.chars() {
         writer.write_all(ch.to_string().as_bytes())?;
         writer.flush()?;
         std::thread::sleep(Duration::from_millis(40));
@@ -86,10 +145,8 @@ fn drive(screen: &mut Screen, writer: &mut Box<dyn Write + Send>, accept_trust: 
     writer.write_all(b"\r")?;
     writer.flush()?;
 
-    let bar = Regex::new(r"\d+\s*%\s*used").unwrap();
-    let shown = screen.wait(Duration::from_secs(30), |t| bar.is_match(t) && t.contains("Resets"));
-    if !shown {
-        return Err(AppError::msg(format!("/usage did not show usage bars.\n\n{}", screen.text().trim())));
+    if !screen.wait(Duration::from_secs(30), shown) {
+        return Err(AppError::msg(format!("{command} did not show the expected screen.\n\n{}", screen.text().trim())));
     }
     screen.settle(Duration::from_millis(2500), Duration::from_secs(12));
     Ok(())
@@ -126,7 +183,7 @@ fn login_needed(text: &str) -> bool {
 }
 
 /// Incrementally rendered virtual terminal fed from the PTY output buffer.
-struct Screen {
+pub struct Screen {
     buffer: Arc<Mutex<Vec<u8>>>,
     consumed: usize,
     parser: vt100::Parser,
@@ -140,7 +197,7 @@ impl Screen {
     }
 
     /// Feeds any new bytes into the virtual terminal.
-    fn pump(&mut self) {
+    pub fn pump(&mut self) {
         let buf = self.buffer.lock().unwrap();
         if buf.len() > self.consumed {
             self.parser.process(&buf[self.consumed..]);
@@ -150,7 +207,7 @@ impl Screen {
     }
 
     /// Current rendered text.
-    fn text(&self) -> String {
+    pub fn text(&self) -> String {
         self.parser.screen().contents()
     }
 
@@ -194,5 +251,18 @@ mod manual {
             println!("{} -> {}% resets {:?} ({:?})", b.label, b.percent, b.resets_text, b.resets_at);
         }
         assert!(!bars.is_empty(), "{}", out.screen);
+    }
+
+    /// Prints the `/model` picker of the installed Claude Code.
+    #[test]
+    #[ignore]
+    fn real_model_picker() {
+        let cwd = std::env::var("DEVHUB_PROBE_CWD").expect("set DEVHUB_PROBE_CWD");
+        let claude = crate::shell_env::which("claude").expect("claude in PATH");
+        let models = super::read_model_picker(&claude, std::path::Path::new(&cwd), &Default::default(), &["ANTHROPIC_API_KEY"], true).unwrap();
+        for m in &models {
+            println!("{} | {} | {}", m.id, m.label, m.description);
+        }
+        assert!(models.len() >= 4);
     }
 }

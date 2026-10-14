@@ -108,7 +108,7 @@ export function SessionCard({ session, selected }: { session: Session; selected:
       <Group gap={4} mt={4}>
         <SessionStatusBadge session={session} />
         <Badge size="xs" variant="default">
-          {modelLabel(session.model, settings.models)}
+          {modelLabel(session.model, settings.catalog)}
         </Badge>
         {repoNames.map((n) => (
           <Badge key={n} size="xs" variant="light" color="gray">

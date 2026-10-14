@@ -25,32 +25,26 @@ pub struct AppData {
 pub struct AppSettings {
     #[serde(default = "default_max_parallel")]
     pub max_parallel_sessions: usize,
-    #[serde(default = "default_models")]
-    pub models: Vec<ModelOption>,
+    #[serde(default = "crate::usage::models::fallback_catalog")]
+    pub model_catalog: Vec<crate::usage::models::CatalogModel>,
+    #[serde(default)]
+    pub catalog_updated_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub disabled_models: Vec<String>,
     #[serde(default)]
     pub default_model: Option<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { max_parallel_sessions: default_max_parallel(), models: default_models(), default_model: None }
+        Self {
+            max_parallel_sessions: default_max_parallel(),
+            model_catalog: crate::usage::models::fallback_catalog(),
+            catalog_updated_at: None,
+            disabled_models: Vec::new(),
+            default_model: None,
+        }
     }
-}
-
-/// A model alias or full name offered in the model pickers.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelOption {
-    pub value: String,
-    pub label: String,
-}
-
-/// Aliases accepted by `claude --model` in the installed version.
-fn default_models() -> Vec<ModelOption> {
-    [("fable", "Fable"), ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")]
-        .iter()
-        .map(|(v, l)| ModelOption { value: v.to_string(), label: l.to_string() })
-        .collect()
 }
 
 /// How a Claude account authenticates; secrets live in the OS keychain.
@@ -155,6 +149,47 @@ pub struct Project {
     pub account_id: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub layout: Vec<LayoutItem>,
+}
+
+/// Top-level entry of a project's repo tree: a loose repo or a one-level group of repos.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum LayoutItem {
+    #[serde(rename_all = "camelCase")]
+    Repo { repo_id: String },
+    #[serde(rename_all = "camelCase")]
+    Group { id: String, name: String, #[serde(default)] collapsed: bool, repo_ids: Vec<String> },
+}
+
+impl Project {
+    /// Layout with unknown or duplicated repos removed and new repos appended at the end.
+    pub fn normalized_layout(&self) -> Vec<LayoutItem> {
+        let known: std::collections::HashSet<&str> = self.repos.iter().map(|r| r.id.as_str()).collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for item in &self.layout {
+            match item {
+                LayoutItem::Repo { repo_id } => {
+                    if known.contains(repo_id.as_str()) && seen.insert(repo_id.clone()) {
+                        out.push(item.clone());
+                    }
+                }
+                LayoutItem::Group { id, name, collapsed, repo_ids } => {
+                    let ids: Vec<String> =
+                        repo_ids.iter().filter(|r| known.contains(r.as_str()) && seen.insert((*r).clone())).cloned().collect();
+                    out.push(LayoutItem::Group { id: id.clone(), name: name.clone(), collapsed: *collapsed, repo_ids: ids });
+                }
+            }
+        }
+        for repo in &self.repos {
+            if seen.insert(repo.id.clone()) {
+                out.push(LayoutItem::Repo { repo_id: repo.id.clone() });
+            }
+        }
+        out
+    }
 }
 
 /// A git repository registered in a project.
@@ -244,6 +279,42 @@ mod tests {
     #[test]
     fn common_root_of_single_repo_is_itself() {
         assert_eq!(common_root(&["/www/acme/api"]).as_deref(), Some("/www/acme/api"));
+    }
+
+    #[test]
+    fn layout_drops_unknown_and_appends_new_repos() {
+        use super::{Framework, LayoutItem, Project, Repo};
+        let repo = |id: &str| Repo {
+            id: id.into(),
+            name: id.into(),
+            path: format!("/{id}"),
+            framework: Framework::Generic,
+            package_manager: None,
+            port: None,
+            commands: vec![],
+        };
+        let project = Project {
+            id: "p".into(),
+            name: "p".into(),
+            created_at: chrono::Utc::now(),
+            last_opened_at: None,
+            repos: vec![repo("a"), repo("b"), repo("c")],
+            account_id: None,
+            color: None,
+            layout: vec![
+                LayoutItem::Group { id: "g".into(), name: "G".into(), collapsed: false, repo_ids: vec!["b".into(), "gone".into()] },
+                LayoutItem::Repo { repo_id: "b".into() },
+                LayoutItem::Repo { repo_id: "a".into() },
+            ],
+        };
+        assert_eq!(
+            project.normalized_layout(),
+            vec![
+                LayoutItem::Group { id: "g".into(), name: "G".into(), collapsed: false, repo_ids: vec!["b".into()] },
+                LayoutItem::Repo { repo_id: "a".into() },
+                LayoutItem::Repo { repo_id: "c".into() },
+            ]
+        );
     }
 
     #[test]

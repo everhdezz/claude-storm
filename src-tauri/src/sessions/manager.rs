@@ -422,6 +422,7 @@ mod e2e {
                     }],
                     account_id: Some("acc".into()),
                     color: None,
+                    layout: Vec::new(),
                 });
                 d.accounts.push(crate::models::ClaudeAccount {
                     id: "acc".into(),

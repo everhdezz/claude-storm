@@ -27,6 +27,7 @@ impl Store {
         } else {
             AppData::default()
         };
+        migrate_model_aliases(&mut data);
         for session in &mut data.sessions {
             if matches!(session.status, SessionStatus::Working | SessionStatus::Queued) {
                 session.status = SessionStatus::Interrupted;
@@ -81,6 +82,20 @@ impl Store {
             f(session);
             Ok(session.clone())
         })
+    }
+}
+
+/// Maps legacy aliases (fable/opus/sonnet/haiku) saved by older versions to catalog ids.
+fn migrate_model_aliases(data: &mut AppData) {
+    let catalog: Vec<String> = data.settings.model_catalog.iter().map(|m| m.id.clone()).collect();
+    let resolve = |value: &mut Option<String>| {
+        if let Some(alias) = value.as_deref().filter(|v| ["fable", "opus", "sonnet", "haiku"].contains(v)) {
+            *value = catalog.iter().find(|id| id.starts_with(&format!("claude-{alias}-"))).cloned();
+        }
+    };
+    resolve(&mut data.settings.default_model);
+    for account in &mut data.accounts {
+        resolve(&mut account.default_model);
     }
 }
 

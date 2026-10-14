@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { Alert, Autocomplete, Button, Checkbox, Group, Modal, SegmentedControl, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, SegmentedControl, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { createSession, PERMISSION_OPTIONS } from "../../api/sessions";
+import { modelOptions } from "../../api/settings";
 import { notifyError } from "../../hooks/notify";
 import type { SessionMode } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
@@ -81,13 +82,14 @@ export function NewSessionModal({ opened, onClose }: { opened: boolean; onClose:
               control={control}
               name="model"
               render={({ field }) => (
-                <Autocomplete
+                <Select
                   label="Modelo"
-                  description="Alias o nombre completo"
+                  description="De los habilitados en Settings"
                   placeholder="El de la cuenta"
-                  data={settings.models.map((m) => m.value)}
-                  value={field.value}
-                  onChange={field.onChange}
+                  clearable
+                  data={modelOptions(settings.catalog)}
+                  value={field.value || null}
+                  onChange={(v) => field.onChange(v ?? "")}
                 />
               )}
             />

@@ -9,6 +9,11 @@ const projects: Project[] = [
     name: "tickesoft",
     accountId: "a1",
     color: "#8a5cc7",
+    layout: [
+      { kind: "group", id: "g1", name: "Backend", collapsed: false, repoIds: ["r1", "r3"] },
+      { kind: "repo", repoId: "r2" },
+      { kind: "repo", repoId: "r4" },
+    ],
     createdAt: "2026-10-10T10:00:00Z",
     lastOpenedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
     repos: [
@@ -26,6 +31,24 @@ const projects: Project[] = [
         ],
       },
       {
+        id: "r3",
+        name: "tickesoft-services",
+        path: "/private/var/www/html/tickesoft/tickesoft-services",
+        framework: "laravel",
+        packageManager: "composer",
+        port: 8001,
+        commands: [{ id: "c6", label: "serve", command: "php artisan serve --port=8001", longRunning: true }],
+      },
+      {
+        id: "r4",
+        name: "wallet-app",
+        path: "/private/var/www/html/tickesoft/wallet-app",
+        framework: "expo",
+        packageManager: "npm",
+        port: 8081,
+        commands: [{ id: "c7", label: "expo start", command: "npx expo start", longRunning: true }],
+      },
+      {
         id: "r2",
         name: "tickesoft-web",
         path: "/private/var/www/html/tickesoft/tickesoft-web",
@@ -39,7 +62,7 @@ const projects: Project[] = [
       },
     ],
   },
-  { id: "p2", name: "payser-api", accountId: null, color: null, createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
+  { id: "p2", name: "payser-api", accountId: null, color: null, layout: [], createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
 ];
 
 /** Builds a fixture session. */
@@ -177,18 +200,26 @@ export function installMocks(): void {
         case "get_settings":
           return {
             accounts: [
-              { id: "a1", alias: "Trabajo", kind: "oauthToken", tokenHint: "…X9aQ", defaultModel: "opus", createdAt: "2026-10-14T10:00:00Z" },
+              { id: "a1", alias: "Trabajo", kind: "oauthToken", tokenHint: "…X9aQ", defaultModel: "claude-opus-5-5", createdAt: "2026-10-14T10:00:00Z" },
               { id: "a2", alias: "Personal", kind: "systemLogin", tokenHint: null, defaultModel: null, createdAt: "2026-10-14T10:00:00Z" },
             ],
-            models: [
-              { value: "fable", label: "Fable" },
-              { value: "opus", label: "Opus" },
-              { value: "sonnet", label: "Sonnet" },
-              { value: "haiku", label: "Haiku" },
+            catalog: [
+              { id: "claude-opus-5-5", label: "Opus 5.5", description: "For complex work and everyday tasks", enabled: true },
+              { id: "claude-fable-5-1", label: "Fable 5.1", description: "For your toughest challenges", enabled: true },
+              { id: "claude-sonnet-5-5", label: "Sonnet 5.5", description: "Most efficient for simpler tasks", enabled: true },
+              { id: "claude-haiku-5-5", label: "Haiku 5.5", description: "Fastest for quick answers", enabled: true },
+              { id: "claude-opus-4-8", label: "Opus 4.8", description: "Best for everyday, complex tasks", enabled: false },
             ],
+            catalogUpdatedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
             defaultModel: null,
             maxParallelSessions: 3,
           };
+        case "save_repo_layout": {
+          const project = projects.find((p) => p.id === a.projectId);
+          if (project) project.layout = (args as { layout: Project["layout"] }).layout;
+          emit("projects-changed", null);
+          return null;
+        }
         case "list_sessions":
           return sessions;
         case "session_history":

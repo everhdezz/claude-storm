@@ -1,78 +1,102 @@
-import { ActionIcon, Button, Group, Radio, Stack, Text, TextInput, Title } from "@mantine/core";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
-import { useFieldArray, useForm } from "react-hook-form";
-import { useEffect } from "react";
-import { saveModels } from "../../api/settings";
+import { useState } from "react";
+import { Badge, Button, Group, Radio, Stack, Switch, Table, Text, Title } from "@mantine/core";
+import { IconRefresh } from "@tabler/icons-react";
+import { refreshModelCatalog, setDefaultModel, setModelEnabled } from "../../api/settings";
 import { notifyError, notifySuccess } from "../../hooks/notify";
-import type { ModelOption } from "../../types";
+import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
 
-interface FormValues {
-  models: ModelOption[];
-  defaultModel: string;
-}
-
-/** Editable list of models offered in every model picker, plus the global default. */
+/** Models exposed by the installed Claude Code: enable/disable and pick the global default. */
 export function ModelsSettings() {
-  const { settings } = useProjectContext();
-  const { control, register, handleSubmit, reset, watch, setValue, formState } = useForm<FormValues>();
-  const { fields, append, remove } = useFieldArray({ control, name: "models" });
-  const defaultModel = watch("defaultModel");
-  const models = watch("models") ?? [];
+  const { project, settings } = useProjectContext();
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    reset({ models: settings.models, defaultModel: settings.defaultModel ?? "" });
-  }, [settings.models, settings.defaultModel, reset]);
-
-  async function submit(values: FormValues) {
+  async function refresh() {
+    setRefreshing(true);
     try {
-      await saveModels(values.models, values.defaultModel || null);
-      notifySuccess("Modelos guardados");
+      await refreshModelCatalog(project.id);
+      notifySuccess("Lista de modelos actualizada desde Claude Code");
     } catch (err) {
-      notifyError(err);
+      notifyError(err, "No se pudo leer /model");
+    } finally {
+      setRefreshing(false);
     }
   }
 
+  function toggle(id: string, enabled: boolean) {
+    setModelEnabled(id, enabled).catch((err) => notifyError(err));
+  }
+
   return (
-    <form onSubmit={handleSubmit(submit)}>
-      <Stack>
+    <Stack>
+      <Group justify="space-between" align="flex-start">
         <div>
           <Title order={4}>Modelos</Title>
           <Text size="sm" c="dimmed">
-            Se pasan tal cual a <code>claude --model</code>: puedes usar alias (fable, opus, sonnet, haiku) o nombres completos.
+            Los que expone tu Claude Code en <code>/model</code>. Deshabilita los que no quieras ver en los selectores.
           </Text>
         </div>
-        <Radio.Group value={defaultModel} onChange={(v) => setValue("defaultModel", v)}>
-          <Stack gap="xs">
-            <Radio value="" label="Sin modelo por defecto (lo decide Claude Code)" />
-            {fields.map((field, index) => (
-              <Group key={field.id} wrap="nowrap" gap="xs">
-                <Radio value={models[index]?.value ?? ""} aria-label="Por defecto" />
-                <TextInput
-                  w={170}
-                  placeholder="Etiqueta"
-                  {...register(`models.${index}.label`)}
-                />
-                <TextInput style={{ flex: 1 }} ff="monospace" placeholder="alias o nombre completo" {...register(`models.${index}.value`)} />
-                <ActionIcon variant="subtle" color="red" onClick={() => remove(index)} aria-label="Quitar modelo">
-                  <IconTrash size={15} />
-                </ActionIcon>
-              </Group>
+        <Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} loading={refreshing} onClick={refresh}>
+          Actualizar
+        </Button>
+      </Group>
+      <Radio.Group value={settings.defaultModel ?? ""} onChange={(v) => setDefaultModel(v || null).catch((err) => notifyError(err))}>
+        <Table verticalSpacing={6} highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={70}>Activo</Table.Th>
+              <Table.Th>Modelo</Table.Th>
+              <Table.Th w={110}>Por defecto</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            <Table.Tr>
+              <Table.Td />
+              <Table.Td>
+                <Text size="sm">Lo decide Claude Code</Text>
+                <Text size="xs" c="dimmed">
+                  No se pasa <code>--model</code>
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Radio value="" aria-label="Sin modelo por defecto" />
+              </Table.Td>
+            </Table.Tr>
+            {settings.catalog.map((m) => (
+              <Table.Tr key={m.id} style={{ opacity: m.enabled ? 1 : 0.5 }}>
+                <Table.Td>
+                  <Switch size="xs" checked={m.enabled} onChange={(e) => toggle(m.id, e.currentTarget.checked)} aria-label={`Activar ${m.label}`} />
+                </Table.Td>
+                <Table.Td>
+                  <Group gap={8}>
+                    <Text size="sm" fw={500}>
+                      {m.label}
+                    </Text>
+                    <Text size="xs" c="dimmed" ff="monospace">
+                      {m.id}
+                    </Text>
+                    {settings.defaultModel === m.id && (
+                      <Badge size="xs" variant="light">
+                        por defecto
+                      </Badge>
+                    )}
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {m.description}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <Radio value={m.id} disabled={!m.enabled} aria-label={`${m.label} por defecto`} />
+                </Table.Td>
+              </Table.Tr>
             ))}
-          </Stack>
-        </Radio.Group>
-        <Group justify="space-between">
-          <Button variant="subtle" size="xs" leftSection={<IconPlus size={14} />} onClick={() => append({ value: "", label: "" })}>
-            Agregar modelo
-          </Button>
-          <Button type="submit" loading={formState.isSubmitting}>
-            Guardar
-          </Button>
-        </Group>
-        <Text size="xs" c="dimmed">
-          Orden de prioridad al enviar: modelo elegido en el mensaje → modelo de la sesión → modelo de la cuenta → modelo por defecto.
-        </Text>
-      </Stack>
-    </form>
+          </Table.Tbody>
+        </Table>
+      </Radio.Group>
+      <Text size="xs" c="dimmed">
+        {settings.catalogUpdatedAt ? `Leído de Claude Code ${relativeTime(settings.catalogUpdatedAt)}` : "Lista inicial; se lee de Claude Code al arrancar"} · se
+        actualiza sola una vez al día. Prioridad al enviar: modelo del mensaje → de la sesión → de la cuenta → por defecto.
+      </Text>
+    </Stack>
   );
 }

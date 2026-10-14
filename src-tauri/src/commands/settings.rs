@@ -5,7 +5,8 @@ use tauri::{AppHandle, Emitter, State};
 use crate::accounts;
 use crate::commands::projects::notify_projects_changed;
 use crate::error::{AppError, AppResult};
-use crate::models::{new_id, AccountKind, ClaudeAccount, ModelOption};
+use crate::models::{new_id, AccountKind, ClaudeAccount};
+use crate::usage::models::CatalogModel;
 use crate::store::{find_project_mut, Store};
 
 /// Broadcast to every window when global settings change.
@@ -16,9 +17,19 @@ pub const SETTINGS_CHANGED: &str = "settings-changed";
 #[serde(rename_all = "camelCase")]
 pub struct SettingsView {
     pub accounts: Vec<ClaudeAccount>,
-    pub models: Vec<ModelOption>,
+    pub catalog: Vec<CatalogEntry>,
+    pub catalog_updated_at: Option<chrono::DateTime<Utc>>,
     pub default_model: Option<String>,
     pub max_parallel_sessions: usize,
+}
+
+/// A model of Claude Code's picker plus whether the user enabled it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogEntry {
+    #[serde(flatten)]
+    pub model: CatalogModel,
+    pub enabled: bool,
 }
 
 /// Form to add an account.
@@ -44,14 +55,20 @@ pub struct AccountPatch {
 fn view(store: &Store) -> SettingsView {
     store.read(|d| SettingsView {
         accounts: d.accounts.clone(),
-        models: d.settings.models.clone(),
+        catalog: d
+            .settings
+            .model_catalog
+            .iter()
+            .map(|m| CatalogEntry { model: m.clone(), enabled: !d.settings.disabled_models.contains(&m.id) })
+            .collect(),
+        catalog_updated_at: d.settings.catalog_updated_at,
         default_model: d.settings.default_model.clone(),
         max_parallel_sessions: d.settings.max_parallel_sessions,
     })
 }
 
 /// Notifies every window that settings changed.
-fn broadcast(app: &AppHandle, store: &Store) {
+pub fn broadcast<R: tauri::Runtime>(app: &tauri::AppHandle<R>, store: &Store) {
     let _ = app.emit(SETTINGS_CHANGED, view(store));
 }
 
@@ -140,21 +157,65 @@ pub fn delete_account(app: AppHandle, store: State<Store>, id: String) -> AppRes
     Ok(())
 }
 
-/// Replaces the list of models offered in pickers and the global default model.
+/// Enables or disables a model of the catalog (models are never deleted or renamed).
 #[tauri::command]
-pub fn save_models(app: AppHandle, store: State<Store>, models: Vec<ModelOption>, default_model: Option<String>) -> AppResult<()> {
-    let models: Vec<ModelOption> = models
-        .into_iter()
-        .map(|m| ModelOption { value: m.value.trim().to_string(), label: m.label.trim().to_string() })
-        .filter(|m| !m.value.is_empty())
-        .map(|m| if m.label.is_empty() { ModelOption { label: m.value.clone(), ..m } } else { m })
-        .collect();
+pub fn set_model_enabled(app: AppHandle, store: State<Store>, id: String, enabled: bool) -> AppResult<()> {
     store.write(|d| {
-        d.settings.models = models;
-        d.settings.default_model = default_model.filter(|m| !m.trim().is_empty());
+        d.settings.disabled_models.retain(|m| m != &id);
+        if !enabled {
+            d.settings.disabled_models.push(id.clone());
+            if d.settings.default_model.as_deref() == Some(id.as_str()) {
+                d.settings.default_model = None;
+            }
+        }
         Ok(())
     })?;
     broadcast(&app, &store);
+    Ok(())
+}
+
+/// Sets the global default model (none lets Claude Code decide).
+#[tauri::command]
+pub fn set_default_model(app: AppHandle, store: State<Store>, id: Option<String>) -> AppResult<()> {
+    store.write(|d| {
+        d.settings.default_model = id.filter(|m| !m.trim().is_empty());
+        Ok(())
+    })?;
+    broadcast(&app, &store);
+    Ok(())
+}
+
+/// Re-reads the model list from Claude Code's `/model` picker, using the project's account when given.
+#[tauri::command]
+pub async fn refresh_model_catalog(app: AppHandle, store: State<'_, Store>, project_id: Option<String>) -> AppResult<()> {
+    let account = project_id
+        .and_then(|id| store.project(&id).ok())
+        .and_then(|p| p.account_id)
+        .and_then(|id| store.read(|d| d.accounts.iter().find(|a| a.id == id).cloned()))
+        .filter(|a| a.kind != AccountKind::ApiKey);
+    refresh_catalog(&app, &store, account.as_ref()).await
+}
+
+/// Probes `/model` and stores the catalog; shared by the command and the daily background refresh.
+pub async fn refresh_catalog<R: tauri::Runtime>(app: &tauri::AppHandle<R>, store: &Store, account: Option<&ClaudeAccount>) -> AppResult<()> {
+    let (env, remove) = match account {
+        Some(a) => accounts::account_env(a)?,
+        None => (Default::default(), vec!["ANTHROPIC_API_KEY"]),
+    };
+    let cwd = store.dir().join("claude-probe");
+    let models = tauri::async_runtime::spawn_blocking(move || {
+        let claude = crate::shell_env::which("claude").ok_or_else(|| AppError::msg("The `claude` CLI was not found in PATH."))?;
+        std::fs::create_dir_all(&cwd)?;
+        crate::usage::probe::read_model_picker(&claude, &cwd, &env, &remove, true)
+    })
+    .await
+    .map_err(|e| AppError::msg(e.to_string()))??;
+    store.write(|d| {
+        d.settings.model_catalog = models;
+        d.settings.catalog_updated_at = Some(Utc::now());
+        Ok(())
+    })?;
+    broadcast(app, store);
     Ok(())
 }
 

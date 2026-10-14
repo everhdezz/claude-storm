@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ActionIcon, Autocomplete, Badge, Button, Group, PasswordInput, SegmentedControl, Stack, Text, TextInput, Title, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, PasswordInput, SegmentedControl, Select, Stack, Text, TextInput, Title, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { Controller, useForm } from "react-hook-form";
-import { ACCOUNT_KIND_LABELS, createAccount, deleteAccount, detectKind, setProjectAccount, updateAccount } from "../../api/settings";
+import { ACCOUNT_KIND_LABELS, createAccount, deleteAccount, detectKind, modelOptions, setProjectAccount, updateAccount } from "../../api/settings";
+import { modelLabel } from "../../api/sessions";
 import { notifyError, notifySuccess } from "../../hooks/notify";
 import type { AccountKind, ClaudeAccount } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
@@ -48,7 +49,7 @@ export function AccountsSettings() {
             <Text size="xs" c="dimmed">
               {ACCOUNT_KIND_LABELS[a.kind]}
               {a.tokenHint ? ` · ${a.tokenHint}` : ""}
-              {a.defaultModel ? ` · modelo ${a.defaultModel}` : ""}
+              {a.defaultModel ? ` · ${modelLabel(a.defaultModel, settings.catalog)}` : ""}
             </Text>
           </div>
           {a.id !== projectAccount?.id && (
@@ -178,12 +179,13 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
           control={control}
           name="defaultModel"
           render={({ field }) => (
-            <Autocomplete
+            <Select
               label="Modelo por defecto de esta cuenta"
               placeholder="El global"
-              data={settings.models.map((m) => m.value)}
-              value={field.value}
-              onChange={field.onChange}
+              clearable
+              data={modelOptions(settings.catalog)}
+              value={field.value || null}
+              onChange={(v) => field.onChange(v ?? "")}
             />
           )}
         />

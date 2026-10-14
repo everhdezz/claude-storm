@@ -6,7 +6,7 @@ use tauri::{AppHandle, State};
 use crate::commands::projects::notify_projects_changed;
 use crate::detect::{self, Detection};
 use crate::error::{AppError, AppResult};
-use crate::models::{new_id, Repo, RepoCommand};
+use crate::models::{new_id, LayoutItem, Repo, RepoCommand};
 use crate::store::{find_project_mut, Store};
 
 /// Editable fields of a repo sent back from the UI.
@@ -117,6 +117,19 @@ pub fn redetect_repo(app: AppHandle, store: State<Store>, project_id: String, re
         repo.package_manager = d.package_manager;
         repo.port = d.port;
         repo.commands = d.commands;
+        Ok(())
+    })?;
+    notify_projects_changed(&app);
+    Ok(())
+}
+
+/// Saves the order and grouping of a project's repos (loose repos and one-level groups).
+#[tauri::command]
+pub fn save_repo_layout(app: AppHandle, store: State<Store>, project_id: String, layout: Vec<LayoutItem>) -> AppResult<()> {
+    store.write(|data| {
+        let project = find_project_mut(data, &project_id)?;
+        project.layout = layout;
+        project.layout = project.normalized_layout();
         Ok(())
     })?;
     notify_projects_changed(&app);

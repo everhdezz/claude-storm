@@ -1,4 +1,4 @@
-import type { ChatItem, ModelOption, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
+import type { CatalogModel, ChatItem, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
 import { call } from "./tauri";
 
 export const SESSION_CHANGED = "session-changed";
@@ -86,8 +86,8 @@ export function isBusy(session: Session): boolean {
   return session.status === "working" || session.status === "queued";
 }
 
-/** Label for a model value given the configured model list. */
-export function modelLabel(model: string | null | undefined, models: ModelOption[] = []): string {
+/** Label for a model id given Claude Code's catalog. */
+export function modelLabel(model: string | null | undefined, catalog: CatalogModel[] = []): string {
   if (!model) return "Por defecto";
-  return models.find((m) => m.value === model)?.label ?? model;
+  return catalog.find((m) => m.id === model)?.label ?? model;
 }

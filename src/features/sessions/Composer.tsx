@@ -1,7 +1,8 @@
-import { ActionIcon, Autocomplete, Group, Text, Textarea, Tooltip } from "@mantine/core";
+import { ActionIcon, Group, Select, Text, Textarea, Tooltip } from "@mantine/core";
 import { IconArrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { useForm } from "react-hook-form";
 import { modelLabel } from "../../api/sessions";
+import { modelOptions } from "../../api/settings";
 import { useProjectContext } from "../project/ProjectContext";
 import { AccountLink } from "../settings/AccountLink";
 import classes from "./sessions.module.css";
@@ -59,16 +60,18 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
         />
         <Group justify="space-between" gap="xs" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" miw={0}>
-            <Tooltip label="Modelo solo para este mensaje (puedes escribir uno)" openDelay={400}>
-              <Autocomplete
+            <Tooltip label="Modelo solo para este mensaje" openDelay={400}>
+              <Select
                 size="xs"
                 w={150}
-                variant="filled"
-                placeholder={modelLabel(effectiveDefault, settings.models)}
-                data={settings.models.map((m) => m.value)}
-                value={model}
-                onChange={(v) => setValue("model", v)}
+                variant="unstyled"
+                clearable
+                placeholder={modelLabel(effectiveDefault, settings.catalog)}
+                data={modelOptions(settings.catalog)}
+                value={model || null}
+                onChange={(v) => setValue("model", v ?? "")}
                 disabled={blocked}
+                comboboxProps={{ withinPortal: true, width: 220, position: "top-start" }}
               />
             </Tooltip>
             {context && (

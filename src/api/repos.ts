@@ -1,4 +1,4 @@
-import type { Detection, GitStatus, Repo, RepoPatch } from "../types";
+import type { Detection, GitStatus, LayoutItem, Repo, RepoPatch } from "../types";
 import { call } from "./tauri";
 
 /** Detects the framework of a folder without adding it. */
@@ -30,4 +30,9 @@ export function redetectRepo(projectId: string, repoId: string): Promise<void> {
 /** Reads the working tree status of a repo. */
 export function gitStatus(path: string): Promise<GitStatus> {
   return call("git_status", { path });
+}
+
+/** Saves the order and grouping of a project's repos. */
+export function saveRepoLayout(projectId: string, layout: LayoutItem[]): Promise<void> {
+  return call("save_repo_layout", { projectId, layout });
 }

@@ -51,7 +51,9 @@ pub fn list_projects(app: AppHandle, store: State<Store>) -> Vec<ProjectSummary>
 /// Returns a full project including its repos.
 #[tauri::command]
 pub fn get_project(store: State<Store>, id: String) -> AppResult<Project> {
-    store.project(&id)
+    let mut project = store.project(&id)?;
+    project.layout = project.normalized_layout();
+    Ok(project)
 }
 
 /// Creates an empty project.
@@ -66,6 +68,7 @@ pub fn create_project(app: AppHandle, store: State<Store>, name: String) -> AppR
         repos: Vec::new(),
         account_id: None,
         color: None,
+        layout: Vec::new(),
     };
     let created = project.clone();
     store.write(|d| {

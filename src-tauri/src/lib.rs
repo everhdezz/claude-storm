@@ -39,6 +39,16 @@ pub fn run() {
             });
             let dir = app.path().app_data_dir()?;
             app.manage(Store::load(dir)?);
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let store = handle.state::<Store>();
+                let stale = store.read(|d| d.settings.catalog_updated_at.is_none_or(|t| (chrono::Utc::now() - t).num_hours() >= 24));
+                if stale {
+                    if let Err(err) = commands::settings::refresh_catalog(&handle, &store, None).await {
+                        eprintln!("model catalog refresh failed: {err}");
+                    }
+                }
+            });
             #[cfg(debug_assertions)]
             if let Ok(id) = std::env::var("DEVHUB_OPEN_PROJECT") {
                 let handle = app.handle().clone();
@@ -75,6 +85,7 @@ pub fn run() {
             commands::repos::remove_repo,
             commands::repos::update_repo,
             commands::repos::redetect_repo,
+            commands::repos::save_repo_layout,
             commands::git::git_status,
             commands::processes::start_command,
             commands::processes::stop_process,
@@ -106,7 +117,9 @@ pub fn run() {
             commands::settings::create_account,
             commands::settings::update_account,
             commands::settings::delete_account,
-            commands::settings::save_models,
+            commands::settings::set_model_enabled,
+            commands::settings::set_default_model,
+            commands::settings::refresh_model_catalog,
             commands::settings::set_max_parallel_sessions,
             commands::settings::set_project_account,
             commands::settings::set_project_color,

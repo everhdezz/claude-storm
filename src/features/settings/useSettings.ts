@@ -3,7 +3,7 @@ import { getSettings, SETTINGS_CHANGED } from "../../api/settings";
 import { useTauriEvent } from "../../hooks/useTauriEvent";
 import type { AppSettings } from "../../types";
 
-const EMPTY: AppSettings = { accounts: [], models: [], defaultModel: null, maxParallelSessions: 3 };
+const EMPTY: AppSettings = { accounts: [], catalog: [], catalogUpdatedAt: null, defaultModel: null, maxParallelSessions: 3 };
 
 /** Global settings kept in sync across every window. */
 export function useSettings(): AppSettings {

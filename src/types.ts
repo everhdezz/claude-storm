@@ -27,7 +27,12 @@ export interface Project {
   repos: Repo[];
   accountId: string | null;
   color: string | null;
+  layout: LayoutItem[];
 }
+
+export type LayoutItem =
+  | { kind: "repo"; repoId: string }
+  | { kind: "group"; id: string; name: string; collapsed: boolean; repoIds: string[] };
 
 export interface ProjectSummary {
   id: string;
@@ -162,14 +167,17 @@ export interface ClaudeAccount {
   createdAt: string;
 }
 
-export interface ModelOption {
-  value: string;
+export interface CatalogModel {
+  id: string;
   label: string;
+  description: string;
+  enabled: boolean;
 }
 
 export interface AppSettings {
   accounts: ClaudeAccount[];
-  models: ModelOption[];
+  catalog: CatalogModel[];
+  catalogUpdatedAt: string | null;
   defaultModel: string | null;
   maxParallelSessions: number;
 }
