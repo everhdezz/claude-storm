@@ -36,3 +36,33 @@ export interface ProjectSummary {
   lastOpenedAt: string | null;
   isOpen: boolean;
 }
+
+export interface Detection {
+  framework: Framework;
+  packageManager: string | null;
+  port: number | null;
+  commands: RepoCommand[];
+}
+
+export interface RepoCandidate {
+  name: string;
+  path: string;
+  alreadyAdded: boolean;
+  detection: Detection;
+}
+
+export interface RepoPatch {
+  name: string;
+  port: number | null;
+  commands: RepoCommand[];
+}
+
+export interface GitStatus {
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  staged: number;
+  modified: number;
+  untracked: number;
+  conflicted: number;
+}

@@ -1,6 +1,9 @@
 mod commands;
+mod detect;
 mod error;
+mod git;
 mod models;
+mod shell_env;
 mod store;
 
 use tauri::{Manager, WindowEvent};
@@ -15,6 +18,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            std::thread::spawn(|| {
+                shell_env::login_env();
+            });
             let dir = app.path().app_data_dir()?;
             app.manage(Store::load(dir)?);
             Ok(())
@@ -34,6 +40,13 @@ pub fn run() {
             commands::projects::delete_project,
             commands::windows::open_project_window,
             commands::windows::focus_welcome_window,
+            commands::repos::detect_repo,
+            commands::repos::scan_repos,
+            commands::repos::add_repos,
+            commands::repos::remove_repo,
+            commands::repos::update_repo,
+            commands::repos::redetect_repo,
+            commands::git::git_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DevHub");
