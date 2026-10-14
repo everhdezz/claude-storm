@@ -16,6 +16,7 @@ pub struct UsageBar {
 }
 
 /// Renders raw terminal bytes into the final screen text, as a human would see it.
+#[cfg(test)]
 pub fn render_screen(raw: &[u8], rows: u16, cols: u16) -> String {
     let mut parser = vt100::Parser::new(rows, cols, 0);
     parser.process(raw);

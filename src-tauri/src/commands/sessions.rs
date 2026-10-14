@@ -375,21 +375,6 @@ pub async fn session_remove_worktrees(app: AppHandle, store: State<'_, Store>, s
     Ok(())
 }
 
-/// Updates the global limit of sessions working at once.
-#[tauri::command]
-pub fn set_max_parallel_sessions(store: State<Store>, value: usize) -> AppResult<()> {
-    store.write(|d| {
-        d.settings.max_parallel_sessions = value.clamp(1, 10);
-        Ok(())
-    })
-}
-
-/// Reads the global limit of sessions working at once.
-#[tauri::command]
-pub fn get_max_parallel_sessions(store: State<Store>) -> usize {
-    store.read(|d| d.settings.max_parallel_sessions)
-}
-
 /// Repos, branch and base branches of an isolated session.
 #[allow(clippy::type_complexity)]
 fn isolated_parts(

@@ -64,13 +64,6 @@ pub fn parse_status(out: &str) -> GitStatus {
     s
 }
 
-impl GitStatus {
-    /// Total files with any change, used for compact badges.
-    pub fn changed_files(&self) -> u32 {
-        self.staged.max(self.modified) + self.untracked + self.conflicted
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::parse_status;

@@ -64,6 +64,8 @@ pub fn create_project(app: AppHandle, store: State<Store>, name: String) -> AppR
         created_at: Utc::now(),
         last_opened_at: None,
         repos: Vec::new(),
+        account_id: None,
+        color: None,
     };
     let created = project.clone();
     store.write(|d| {

@@ -26,7 +26,7 @@ import projectClasses from "../project/project.module.css";
 /** Center island for a selected session: conversation, branch actions and composer. */
 export function SessionView() {
   const { sessionId = "" } = useParams();
-  const { project, sessions, refreshGit } = useProjectContext();
+  const { project, sessions, settings, refreshGit } = useProjectContext();
   const navigate = useNavigate();
   const session = sessions.find((s) => s.id === sessionId);
   const { items, streaming, loading } = useSessionChat(sessionId);
@@ -137,7 +137,7 @@ export function SessionView() {
           </Group>
           <Group gap={6} mt={2} wrap="nowrap">
             <Badge size="xs" variant="default">
-              {modelLabel(session.model)}
+              {modelLabel(session.model, settings.models)}
             </Badge>
             {repoNames.map((n) => (
               <Badge key={n} size="xs" variant="light" color="gray">
@@ -215,7 +215,7 @@ export function SessionView() {
           key={session.id}
           placeholder={session.status === "queued" ? "En cola…" : "Continúa la conversación…"}
           defaultModel={session.model}
-          context={`Login por defecto · ${modelLabel(session.model)} · ${session.permissionMode}`}
+          context={`Login por defecto · ${modelLabel(session.model, settings.models)} · ${session.permissionMode}`}
           busy={isBusy(session)}
           autoFocus
           onSend={send}

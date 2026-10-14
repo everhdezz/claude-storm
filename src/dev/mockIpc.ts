@@ -7,6 +7,8 @@ const projects: Project[] = [
   {
     id: "p1",
     name: "tickesoft",
+    accountId: "a1",
+    color: "#8a5cc7",
     createdAt: "2026-10-10T10:00:00Z",
     lastOpenedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
     repos: [
@@ -37,7 +39,7 @@ const projects: Project[] = [
       },
     ],
   },
-  { id: "p2", name: "payser-api", createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
+  { id: "p2", name: "payser-api", accountId: null, color: null, createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
 ];
 
 /** Builds a fixture session. */
@@ -171,6 +173,21 @@ export function installMocks(): void {
               { label: "Current week (all models)", percent: 47, resetsText: "Oct 17 at 3:59am (America/Chihuahua)", resetsAt: new Date(Date.now() + 63 * 3600_000).toISOString() },
               { label: "Current week (Fable)", percent: 0, resetsText: "Oct 17 at 4am (America/Chihuahua)", resetsAt: new Date(Date.now() + 63 * 3600_000).toISOString() },
             ],
+          };
+        case "get_settings":
+          return {
+            accounts: [
+              { id: "a1", alias: "Trabajo", kind: "oauthToken", tokenHint: "…X9aQ", defaultModel: "opus", createdAt: "2026-10-14T10:00:00Z" },
+              { id: "a2", alias: "Personal", kind: "systemLogin", tokenHint: null, defaultModel: null, createdAt: "2026-10-14T10:00:00Z" },
+            ],
+            models: [
+              { value: "fable", label: "Fable" },
+              { value: "opus", label: "Opus" },
+              { value: "sonnet", label: "Sonnet" },
+              { value: "haiku", label: "Haiku" },
+            ],
+            defaultModel: null,
+            maxParallelSessions: 3,
           };
         case "list_sessions":
           return sessions;

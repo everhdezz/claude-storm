@@ -69,7 +69,13 @@ impl SessionManager {
         if self.is_running(session_id) || session.status == SessionStatus::Queued {
             return Err(AppError::msg("This session is already working; wait or stop it first."));
         }
-        let item = ChatItem::Prompt { text: prompt.clone(), model: model.clone().or(session.model.clone()), at: Utc::now() };
+        let account = project_account(&store, &session.project_id)?;
+        let item = ChatItem::Prompt {
+            text: prompt.clone(),
+            model: model.clone().or(session.model.clone()).or(account.default_model.clone()),
+            account: Some(account.alias.clone()),
+            at: Utc::now(),
+        };
         self.record(app, &session, vec![item]);
 
         let limit = store.read(|d| d.settings.max_parallel_sessions.max(1));
@@ -164,6 +170,8 @@ impl SessionManager {
             return Err(AppError::msg("The session has no repos; add at least one."));
         };
         let claude = crate::shell_env::which("claude").ok_or_else(|| AppError::msg("The `claude` CLI was not found in PATH."))?;
+        let account = project_account(&store, &session.project_id)?;
+        let (account_vars, cleared_vars) = crate::accounts::account_env(&account)?;
 
         let mut cmd = crate::shell_env::async_command(&claude.to_string_lossy());
         cmd.arg("-p")
@@ -174,7 +182,12 @@ impl SessionManager {
         } else {
             cmd.args(["--session-id", &session.claude_session_id]);
         }
-        if let Some(m) = model.clone().or(session.model.clone()).filter(|m| !m.trim().is_empty()) {
+        for var in cleared_vars {
+            cmd.env_remove(var);
+        }
+        cmd.envs(&account_vars);
+        let default_model = account.default_model.clone().or(store.read(|d| d.settings.default_model.clone()));
+        if let Some(m) = model.clone().or(session.model.clone()).or(default_model).filter(|m| !m.trim().is_empty()) {
             cmd.args(["--model", m.trim()]);
         }
         for dir in dirs.iter().skip(1) {
@@ -314,7 +327,9 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
         let _ = app.emit_to(project_window_label(&session.project_id).as_str(), SESSION_DELTA, DeltaEvent { session_id: id, text });
     }
     if !parsed.rate_windows.is_empty() {
-        app.state::<UsageService>().apply_rate_windows(app, &parsed.rate_windows);
+        if let Some(account_id) = app.state::<Store>().project(&session.project_id).ok().and_then(|p| p.account_id) {
+            app.state::<UsageService>().apply_rate_windows(app, &account_id, &parsed.rate_windows);
+        }
     }
     for item in &parsed.items {
         if let Some(file) = edited_file(item) {
@@ -331,6 +346,15 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
     if !parsed.items.is_empty() {
         app.state::<SessionManager>().record(app, &session, parsed.items);
     }
+}
+
+/// The Claude account selected by a project; sessions refuse to run without one.
+fn project_account(store: &Store, project_id: &str) -> AppResult<crate::models::ClaudeAccount> {
+    let project = store.project(project_id)?;
+    let id = project.account_id.ok_or_else(|| AppError::msg("This project has no Claude account. Pick one before chatting."))?;
+    store
+        .read(|d| d.accounts.iter().find(|a| a.id == id).cloned())
+        .ok_or_else(|| AppError::msg("The project's Claude account no longer exists. Pick another one."))
 }
 
 /// Folder Claude works in for a repo: the repo itself, or the session's worktree when isolated.
@@ -396,6 +420,16 @@ mod e2e {
                         port: None,
                         commands: vec![],
                     }],
+                    account_id: Some("acc".into()),
+                    color: None,
+                });
+                d.accounts.push(crate::models::ClaudeAccount {
+                    id: "acc".into(),
+                    alias: "este equipo".into(),
+                    kind: crate::models::AccountKind::SystemLogin,
+                    token_hint: None,
+                    default_model: None,
+                    created_at: Utc::now(),
                 });
                 d.sessions.push(Session {
                     id: session_id.clone(),

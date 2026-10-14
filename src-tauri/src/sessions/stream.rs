@@ -14,7 +14,13 @@ const EDIT_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit", "NotebookEdit"];
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum ChatItem {
-    Prompt { text: String, model: Option<String>, at: DateTime<Utc> },
+    Prompt {
+        text: String,
+        model: Option<String>,
+        #[serde(default)]
+        account: Option<String>,
+        at: DateTime<Utc>,
+    },
     Text { text: String },
     ToolUse { id: String, name: String, input: Value },
     ToolResult { tool_use_id: String, content: String, is_error: bool },

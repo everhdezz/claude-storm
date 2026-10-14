@@ -1,13 +1,15 @@
 import { ActionIcon, Autocomplete, Group, Text, Textarea, Tooltip } from "@mantine/core";
 import { IconArrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { useForm } from "react-hook-form";
+import { modelLabel } from "../../api/sessions";
+import { useProjectContext } from "../project/ProjectContext";
+import { AccountLink } from "../settings/AccountLink";
 import classes from "./sessions.module.css";
-import { MODEL_OPTIONS, modelLabel } from "../../api/sessions";
 
 interface ComposerProps {
   placeholder: string;
   defaultModel: string | null;
-  context: string;
+  context?: string;
   busy?: boolean;
   autoFocus?: boolean;
   onSend: (prompt: string, model: string | null) => Promise<void>;
@@ -19,19 +21,21 @@ interface FormValues {
   model: string;
 }
 
-/** Prompt box with per-prompt model override; Enter sends, Shift+Enter adds a line. */
+/** Prompt box with the project's account link and a per-prompt model override; Enter sends. */
 export function Composer({ placeholder, defaultModel, context, busy = false, autoFocus, onSend, onStop }: ComposerProps) {
+  const { account, settings } = useProjectContext();
+  const effectiveDefault = defaultModel ?? account?.defaultModel ?? settings.defaultModel;
   const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormValues>({
-    defaultValues: { prompt: "", model: defaultModel ?? "" },
+    defaultValues: { prompt: "", model: "" },
   });
   const model = watch("model");
+  const blocked = !account;
 
   async function submit(values: FormValues) {
     const prompt = values.prompt.trim();
-    if (!prompt) return;
-    const override = values.model !== (defaultModel ?? "") ? values.model : null;
-    await onSend(prompt, override);
-    reset({ prompt: "", model: defaultModel ?? "" });
+    if (!prompt || blocked) return;
+    await onSend(prompt, values.model.trim() || null);
+    reset({ prompt: "", model: "" });
   }
 
   return (
@@ -42,7 +46,8 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
           autosize
           minRows={2}
           maxRows={12}
-          placeholder={placeholder}
+          disabled={blocked}
+          placeholder={blocked ? "Elige una cuenta de Claude para este proyecto antes de chatear." : placeholder}
           autoFocus={autoFocus}
           {...register("prompt")}
           onKeyDown={(e) => {
@@ -53,21 +58,25 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
           }}
         />
         <Group justify="space-between" gap="xs" wrap="nowrap">
-          <Group gap="xs" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap" miw={0}>
+            <AccountLink />
             <Tooltip label="Modelo solo para este mensaje (puedes escribir uno)" openDelay={400}>
               <Autocomplete
                 size="xs"
                 w={150}
                 variant="filled"
-                placeholder={modelLabel(defaultModel)}
-                data={MODEL_OPTIONS.filter((m) => m.value).map((m) => m.value)}
+                placeholder={modelLabel(effectiveDefault, settings.models)}
+                data={settings.models.map((m) => m.value)}
                 value={model}
                 onChange={(v) => setValue("model", v)}
+                disabled={blocked}
               />
             </Tooltip>
-            <Text size="xs" c="dimmed" truncate>
-              {context}
-            </Text>
+            {context && (
+              <Text size="xs" c="dimmed" truncate>
+                {context}
+              </Text>
+            )}
           </Group>
           {busy && onStop ? (
             <Tooltip label="Detener">
@@ -76,7 +85,7 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
               </ActionIcon>
             </Tooltip>
           ) : (
-            <ActionIcon type="submit" radius="xl" variant="filled" loading={formState.isSubmitting} aria-label="Enviar">
+            <ActionIcon type="submit" radius="xl" variant="filled" disabled={blocked} loading={formState.isSubmitting} aria-label="Enviar">
               <IconArrowUp size={16} />
             </ActionIcon>
           )}

@@ -73,6 +73,7 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
         </Text>
       </Paper>
       <Text size="xs" c="dimmed" mt={4}>
+        {item.account ? `${item.account} · ` : ""}
         {modelLabel(item.model)} · {relativeTime(item.at)}
       </Text>
     </div>

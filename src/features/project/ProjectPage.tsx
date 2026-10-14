@@ -10,6 +10,8 @@ import ide from "../../components/ide/ide.module.css";
 import { ChatsTool } from "../chats/ChatsTool";
 import { useProcesses } from "../processes/useProcesses";
 import { useSessions } from "../sessions/useSessions";
+import { SettingsModal, type SettingsSection } from "../settings/SettingsModal";
+import { useSettings } from "../settings/useSettings";
 import { ProjectsTool } from "../projects-tool/ProjectsTool";
 import { ServicesTool } from "../services/ServicesTool";
 import { StatusBar } from "../status/StatusBar";
@@ -27,6 +29,8 @@ export function ProjectPage() {
   const git = useGitStatuses(project?.repos ?? []);
   const { processes } = useProcesses(projectId);
   const sessions = useSessions(projectId, sessionId);
+  const settings = useSettings();
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
   const layout = useLayoutPrefs();
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
@@ -47,6 +51,7 @@ export function ProjectPage() {
   }
 
   const running = Object.values(processes).filter(isActive).length;
+  const account = settings.accounts.find((a) => a.id === project.accountId) ?? null;
   const { prefs } = layout;
   const sessionsWorking = sessions.some((s) => s.status === "working");
   const topItems: StripeItem<LeftTool>[] = [
@@ -77,6 +82,9 @@ export function ProjectPage() {
         refreshGit: git.refresh,
         processes,
         sessions,
+        settings,
+        account,
+        openSettings: (section) => setSettingsSection(section ?? "accounts"),
         selectedService,
         selectService: setSelectedService,
         revealService,
@@ -84,7 +92,12 @@ export function ProjectPage() {
       }}
     >
       <div className={ide.window}>
-        <ProjectTitleBar projectId={project.id} projectName={project.name} />
+        <ProjectTitleBar
+          projectId={project.id}
+          projectName={project.name}
+          color={project.color}
+          onSettings={() => setSettingsSection("accounts")}
+        />
         <ToolStripe
           top={topItems}
           bottom={bottomItems}
@@ -131,6 +144,7 @@ export function ProjectPage() {
             </Island>
           )}
         </div>
+        <SettingsModal section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsSection(null)} />
         <StatusBar
           projectId={project.id}
           right={

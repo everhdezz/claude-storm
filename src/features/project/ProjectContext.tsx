@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
-import type { ProcessInfo, Project, Session } from "../../types";
+import type { AppSettings, ClaudeAccount, ProcessInfo, Project, Session } from "../../types";
+import type { SettingsSection } from "../settings/SettingsModal";
 import type { GitStatusMap } from "./useGitStatuses";
 
 export interface ProjectContextValue {
@@ -9,6 +10,9 @@ export interface ProjectContextValue {
   refreshGit: (repoId?: string) => Promise<void>;
   processes: Record<string, ProcessInfo>;
   sessions: Session[];
+  settings: AppSettings;
+  account: ClaudeAccount | null;
+  openSettings: (section?: SettingsSection) => void;
   selectedService: string | null;
   selectService: (processId: string) => void;
   revealService: (processId: string) => void;

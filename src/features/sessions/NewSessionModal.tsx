@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Alert, Autocomplete, Button, Checkbox, Group, Modal, SegmentedControl, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
-import { createSession, MODEL_OPTIONS, PERMISSION_OPTIONS } from "../../api/sessions";
+import { createSession, PERMISSION_OPTIONS } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import type { SessionMode } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
@@ -17,7 +17,7 @@ interface FormValues {
 
 /** Quick form to open a new parallel session. */
 export function NewSessionModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
-  const { project, sessions } = useProjectContext();
+  const { project, sessions, settings } = useProjectContext();
   const navigate = useNavigate();
   const othersActive = sessions.some((s) => !s.archived && ["working", "queued", "waiting", "done"].includes(s.status));
   const { control, register, handleSubmit, reset, watch, formState } = useForm<FormValues>();
@@ -84,8 +84,8 @@ export function NewSessionModal({ opened, onClose }: { opened: boolean; onClose:
                 <Autocomplete
                   label="Modelo"
                   description="Alias o nombre completo"
-                  placeholder="Por defecto"
-                  data={MODEL_OPTIONS.filter((m) => m.value).map((m) => m.value)}
+                  placeholder="El de la cuenta"
+                  data={settings.models.map((m) => m.value)}
                   value={field.value}
                   onChange={field.onChange}
                 />

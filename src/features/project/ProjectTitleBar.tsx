@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Group, Menu, Text, UnstyledButton } from "@mantine/core";
-import { IconChevronDown, IconFolders } from "@tabler/icons-react";
+import { ActionIcon, Group, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconChevronDown, IconFolders, IconSettings } from "@tabler/icons-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { focusWelcomeWindow, listProjects, openProjectWindow } from "../../api/projects";
 import { notifyError } from "../../hooks/notify";
@@ -11,7 +11,14 @@ import classes from "./titlebar.module.css";
 const IS_MAC = navigator.userAgent.includes("Mac");
 
 /** WebStorm-like window header: project switcher on the left, draggable empty space. */
-export function ProjectTitleBar({ projectId, projectName }: { projectId: string; projectName: string }) {
+interface ProjectTitleBarProps {
+  projectId: string;
+  projectName: string;
+  color: string | null;
+  onSettings: () => void;
+}
+
+export function ProjectTitleBar({ projectId, projectName, color, onSettings }: ProjectTitleBarProps) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -30,7 +37,10 @@ export function ProjectTitleBar({ projectId, projectName }: { projectId: string;
   return (
     <header
       className={classes.bar}
-      style={{ paddingLeft: IS_MAC ? 80 : 10 }}
+      style={{
+        paddingLeft: IS_MAC ? 80 : 10,
+        background: color ? `linear-gradient(90deg, ${color}66 0%, ${color}26 38%, transparent 70%)` : undefined,
+      }}
       data-tauri-drag-region
       onDoubleClick={(e) => e.target === e.currentTarget && getCurrentWindow().toggleMaximize()}
     >
@@ -72,6 +82,12 @@ export function ProjectTitleBar({ projectId, projectName }: { projectId: string;
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
+      <div style={{ flex: 1 }} data-tauri-drag-region />
+      <Tooltip label="Settings">
+        <ActionIcon variant="subtle" color="gray" onClick={onSettings} aria-label="Settings">
+          <IconSettings size={18} stroke={1.6} />
+        </ActionIcon>
+      </Tooltip>
     </header>
   );
 }

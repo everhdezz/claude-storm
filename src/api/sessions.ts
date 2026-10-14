@@ -1,18 +1,10 @@
-import type { ChatItem, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
+import type { ChatItem, ModelOption, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
 import { call } from "./tauri";
 
 export const SESSION_CHANGED = "session-changed";
 export const SESSION_ITEM = "session-item";
 export const SESSION_DELTA = "session-delta";
 export const SESSION_DELETED = "session-deleted";
-
-export const MODEL_OPTIONS = [
-  { value: "", label: "Por defecto" },
-  { value: "fable", label: "Fable" },
-  { value: "opus", label: "Opus" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "haiku", label: "Haiku" },
-];
 
 export const PERMISSION_OPTIONS = [
   { value: "acceptEdits", label: "Aceptar ediciones" },
@@ -94,7 +86,8 @@ export function isBusy(session: Session): boolean {
   return session.status === "working" || session.status === "queued";
 }
 
-/** Label for a model value. */
-export function modelLabel(model: string | null | undefined): string {
-  return MODEL_OPTIONS.find((m) => m.value === (model ?? ""))?.label ?? model ?? "Por defecto";
+/** Label for a model value given the configured model list. */
+export function modelLabel(model: string | null | undefined, models: ModelOption[] = []): string {
+  if (!model) return "Por defecto";
+  return models.find((m) => m.value === model)?.label ?? model;
 }

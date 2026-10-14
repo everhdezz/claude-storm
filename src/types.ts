@@ -25,6 +25,8 @@ export interface Project {
   createdAt: string;
   lastOpenedAt: string | null;
   repos: Repo[];
+  accountId: string | null;
+  color: string | null;
 }
 
 export interface ProjectSummary {
@@ -124,7 +126,7 @@ export interface Session {
 }
 
 export type ChatItem =
-  | { kind: "prompt"; text: string; model: string | null; at: string }
+  | { kind: "prompt"; text: string; model: string | null; account?: string | null; at: string }
   | { kind: "text"; text: string }
   | { kind: "toolUse"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "toolResult"; toolUseId: string; content: string; isError: boolean }
@@ -148,3 +150,26 @@ export interface RepoDiff {
 }
 
 export type WorktreeCleanup = "keep" | "removeWorktree" | "removeWorktreeAndBranch";
+
+export type AccountKind = "oauthToken" | "apiKey" | "systemLogin";
+
+export interface ClaudeAccount {
+  id: string;
+  alias: string;
+  kind: AccountKind;
+  tokenHint: string | null;
+  defaultModel: string | null;
+  createdAt: string;
+}
+
+export interface ModelOption {
+  value: string;
+  label: string;
+}
+
+export interface AppSettings {
+  accounts: ClaudeAccount[];
+  models: ModelOption[];
+  defaultModel: string | null;
+  maxParallelSessions: number;
+}

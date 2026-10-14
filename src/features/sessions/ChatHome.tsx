@@ -52,7 +52,7 @@ export function ChatHome() {
         <Composer
           placeholder="Pídele algo a Claude… (Enter para enviar, Shift+Enter para nueva línea)"
           defaultModel={null}
-          context="Sesión nueva · login de Claude por defecto"
+          context="Sesión nueva"
           autoFocus
           onSend={start}
         />

@@ -19,11 +19,11 @@ export interface UsageSnapshot {
 }
 
 /** Reads plan usage through Claude Code's `/usage`, served from cache when fresh. */
-export function claudeUsage(projectId: string | null, force: boolean): Promise<UsageSnapshot> {
+export function claudeUsage(projectId: string, force: boolean): Promise<UsageSnapshot | null> {
   return call("claude_usage", { projectId, force });
 }
 
 /** Returns the last cached usage without querying Claude Code. */
-export function claudeUsageCached(): Promise<UsageSnapshot | null> {
-  return call("claude_usage_cached");
+export function claudeUsageCached(projectId: string): Promise<UsageSnapshot | null> {
+  return call("claude_usage_cached", { projectId });
 }

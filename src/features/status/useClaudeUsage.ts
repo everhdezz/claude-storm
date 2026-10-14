@@ -5,8 +5,8 @@ import { useTauriEvent } from "../../hooks/useTauriEvent";
 const REFRESH_MS = 10 * 60_000;
 const STALE_MS = 60 * 60_000;
 
-/** Plan usage for the status bar: cached first, refreshed every 10 minutes or on demand. */
-export function useClaudeUsage(projectId: string) {
+/** Plan usage of the project's account: cached first, refreshed every 10 minutes or on demand. */
+export function useClaudeUsage(projectId: string, accountId: string | null) {
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [, setTick] = useState(0);
@@ -24,7 +24,9 @@ export function useClaudeUsage(projectId: string) {
   );
 
   useEffect(() => {
-    claudeUsageCached().then((cached) => cached && setSnapshot(cached));
+    setSnapshot(null);
+    if (!accountId) return;
+    claudeUsageCached(projectId).then((cached) => cached && setSnapshot(cached));
     refresh(false);
     const timer = window.setInterval(() => refresh(false), REFRESH_MS);
     const clock = window.setInterval(() => setTick((t) => t + 1), 30_000);
@@ -32,9 +34,11 @@ export function useClaudeUsage(projectId: string) {
       window.clearInterval(timer);
       window.clearInterval(clock);
     };
-  }, [refresh]);
+  }, [refresh, accountId, projectId]);
 
-  useTauriEvent<UsageSnapshot>(USAGE_UPDATED, setSnapshot);
+  useTauriEvent<UsageSnapshot>(USAGE_UPDATED, (next) => {
+    if (next.profileKey === accountId) setSnapshot(next);
+  });
 
   const stale = snapshot ? Date.now() - new Date(snapshot.fetchedAt).getTime() > STALE_MS : false;
   return { snapshot, loading, stale, refresh };

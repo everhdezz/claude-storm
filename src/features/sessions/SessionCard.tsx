@@ -13,7 +13,7 @@ import classes from "./sessions.module.css";
 
 /** Card of one session in the Chats tool window. */
 export function SessionCard({ session, selected }: { session: Session; selected: boolean }) {
-  const { project } = useProjectContext();
+  const { project, settings } = useProjectContext();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const repoNames = session.repoIds.map((id) => project.repos.find((r) => r.id === id)?.name).filter(Boolean) as string[];
@@ -108,7 +108,7 @@ export function SessionCard({ session, selected }: { session: Session; selected:
       <Group gap={4} mt={4}>
         <SessionStatusBadge session={session} />
         <Badge size="xs" variant="default">
-          {modelLabel(session.model)}
+          {modelLabel(session.model, settings.models)}
         </Badge>
         {repoNames.map((n) => (
           <Badge key={n} size="xs" variant="light" color="gray">

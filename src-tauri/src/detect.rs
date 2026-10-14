@@ -138,33 +138,6 @@ fn port_from_config(dir: &Path, framework: Framework) -> Option<u16> {
     })
 }
 
-/// Recursively finds git repositories below `root`, skipping heavy or hidden folders.
-pub fn find_git_repos(root: &Path, max_depth: usize) -> Vec<std::path::PathBuf> {
-    let mut found = Vec::new();
-    walk(root, max_depth, &mut found);
-    found.sort();
-    found
-}
-
-/// Depth-limited walker used by `find_git_repos`.
-fn walk(dir: &Path, depth: usize, found: &mut Vec<std::path::PathBuf>) {
-    if dir.join(".git").exists() {
-        found.push(dir.to_path_buf());
-        return;
-    }
-    if depth == 0 {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        let skip = name.starts_with('.') || matches!(name.as_str(), "node_modules" | "vendor" | "target" | "dist" | "build");
-        if !skip && entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            walk(&entry.path(), depth - 1, found);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,21 +189,5 @@ mod tests {
         let d = detect(&temp_dir("generic"));
         assert_eq!(d.framework, Framework::Generic);
         assert!(d.commands.is_empty());
-    }
-}
-
-#[cfg(test)]
-mod manual {
-    /// Prints detection for every repo under $DEVHUB_SCAN_ROOT; run with `cargo test -- --ignored --nocapture`.
-    #[test]
-    #[ignore]
-    fn scan_real_folder() {
-        let root = std::env::var("DEVHUB_SCAN_ROOT").expect("set DEVHUB_SCAN_ROOT");
-        for path in super::find_git_repos(std::path::Path::new(&root), 3) {
-            let d = super::detect(&path);
-            let cmds: Vec<_> = d.commands.iter().map(|c| c.command.clone()).collect();
-            let git = crate::git::status(&path).map(|s| format!("{:?} changes={}", s.branch, s.changed_files()));
-            println!("{} {:?} {:?} {:?} {:?} {:?}", path.display(), d.framework, d.package_manager, d.port, cmds, git);
-        }
     }
 }

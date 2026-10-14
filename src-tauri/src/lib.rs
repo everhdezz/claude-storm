@@ -1,3 +1,4 @@
+mod accounts;
 mod commands;
 mod detect;
 mod error;
@@ -101,8 +102,14 @@ pub fn run() {
             commands::sessions::session_commit,
             commands::sessions::session_merge,
             commands::sessions::session_remove_worktrees,
-            commands::sessions::set_max_parallel_sessions,
-            commands::sessions::get_max_parallel_sessions,
+            commands::settings::get_settings,
+            commands::settings::create_account,
+            commands::settings::update_account,
+            commands::settings::delete_account,
+            commands::settings::save_models,
+            commands::settings::set_max_parallel_sessions,
+            commands::settings::set_project_account,
+            commands::settings::set_project_color,
         ])
         .build(tauri::generate_context!())
         .expect("error while building DevHub");

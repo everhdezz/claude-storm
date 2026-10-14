@@ -1,7 +1,22 @@
-import { ActionIcon, Badge, Code, Group, Loader, Popover, Progress, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Code,
+  Group,
+  Loader,
+  Popover,
+  Progress,
+  ScrollArea,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from "@mantine/core";
 import { IconAlertTriangle, IconRefresh, IconSparkles } from "@tabler/icons-react";
 import type { UsageBar } from "../../api/usage";
 import { relativeTime } from "../../utils/time";
+import { useProjectContext } from "../project/ProjectContext";
+import { AccountLink } from "../settings/AccountLink";
 import { timeUntil, useClaudeUsage } from "./useClaudeUsage";
 import classes from "../../components/ide/ide.module.css";
 
@@ -12,43 +27,48 @@ interface StatusBarProps {
 
 /** Fixed bottom bar: Claude plan usage on the left, window status on the right. */
 export function StatusBar({ projectId, right }: StatusBarProps) {
-  const usage = useClaudeUsage(projectId);
+  const { account } = useProjectContext();
+  const usage = useClaudeUsage(projectId, account?.id ?? null);
   const { snapshot, loading, stale } = usage;
   const session = snapshot?.bars.find((b) => /session/i.test(b.label));
-  const week = snapshot?.bars.find((b) => /week/i.test(b.label) && /all/i.test(b.label)) ?? snapshot?.bars.find((b) => /week/i.test(b.label));
+  const week =
+    snapshot?.bars.find((b) => /week/i.test(b.label) && /all/i.test(b.label)) ??
+    snapshot?.bars.find((b) => /week/i.test(b.label));
 
   return (
     <footer className={classes.statusBar}>
-      <Popover position="top-start" width={420} shadow="md" withinPortal>
-        <Popover.Target>
-          <UnstyledButton>
-            <Group gap={8} wrap="nowrap">
-              <IconSparkles size={13} color="var(--mantine-color-orange-4)" />
-              <Text size="xs" c="gray.4">
-                Claude
-              </Text>
-              {!snapshot && loading && <Loader size={10} />}
-              {snapshot?.billing === "api" && <Text size="xs">API key · cobro por token</Text>}
-              {snapshot && snapshot.billing === "subscription" && snapshot.bars.length === 0 && (
-                <Text size="xs" c="yellow.5">
-                  sin datos de uso
-                </Text>
-              )}
-              {session && <InlineBar name="Sesión" bar={session} />}
-              {week && <InlineBar name="Semana" bar={week} />}
-              {stale && (
-                <Tooltip label="Datos con más de 60 minutos">
-                  <IconAlertTriangle size={12} color="var(--mantine-color-yellow-5)" />
-                </Tooltip>
-              )}
-              {snapshot && loading && <Loader size={10} />}
-            </Group>
-          </UnstyledButton>
-        </Popover.Target>
-        <Popover.Dropdown>
-          <UsageDetails usage={usage} />
-        </Popover.Dropdown>
-      </Popover>
+      <Group gap={10} wrap="nowrap">
+        <AccountLink />
+        {account && (
+          <Popover position="top-start" width={420} shadow="md" withinPortal>
+            <Popover.Target>
+              <UnstyledButton>
+                <Group gap={8} wrap="nowrap">
+                  <IconSparkles size={13} color="var(--mantine-color-orange-4)" />
+                  {!snapshot && loading && <Loader size={10} />}
+                  {snapshot?.billing === "api" && <Text size="xs">API key · cobro por token</Text>}
+                  {snapshot && snapshot.billing === "subscription" && snapshot.bars.length === 0 && (
+                    <Text size="xs" c="yellow.5">
+                      sin datos de uso
+                    </Text>
+                  )}
+                  {session && <InlineBar name="Sesión" bar={session} />}
+                  {week && <InlineBar name="Semana" bar={week} />}
+                  {stale && (
+                    <Tooltip label="Datos con más de 60 minutos">
+                      <IconAlertTriangle size={12} color="var(--mantine-color-yellow-5)" />
+                    </Tooltip>
+                  )}
+                  {snapshot && loading && <Loader size={10} />}
+                </Group>
+              </UnstyledButton>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <UsageDetails usage={usage} />
+            </Popover.Dropdown>
+          </Popover>
+        )}
+      </Group>
       <Group gap="md" wrap="nowrap">
         {right}
       </Group>
@@ -127,8 +147,8 @@ function UsageDetails({ usage }: { usage: ReturnType<typeof useClaudeUsage> }) {
         </ScrollArea.Autosize>
       )}
       <Text size="xs" c="dimmed">
-        {snapshot ? `Actualizado ${relativeTime(snapshot.fetchedAt)}` : "Consultando /usage…"} · se refresca cada 10 min. Los datos
-        vienen de la pantalla /usage de Claude Code; si su formato cambia, se muestra el texto crudo.
+        {snapshot ? `Actualizado ${relativeTime(snapshot.fetchedAt)}` : "Consultando /usage…"} · se refresca cada 10 min. Los
+        datos vienen de la pantalla /usage de Claude Code; si su formato cambia, se muestra el texto crudo.
       </Text>
     </Stack>
   );

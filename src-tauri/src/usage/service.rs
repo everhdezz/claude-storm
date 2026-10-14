@@ -81,10 +81,10 @@ impl UsageService {
 
 impl UsageService {
     /// Updates the default snapshot from the usage Claude Code reports inline after each request.
-    pub fn apply_rate_windows<R: Runtime>(&self, app: &AppHandle<R>, windows: &[crate::sessions::stream::RateWindow]) {
+    pub fn apply_rate_windows<R: Runtime>(&self, app: &AppHandle<R>, key: &str, windows: &[crate::sessions::stream::RateWindow]) {
         let mut cache = self.cache.lock().unwrap();
-        let snapshot = cache.entry("default".into()).or_insert_with(|| UsageSnapshot {
-            profile_key: "default".into(),
+        let snapshot = cache.entry(key.into()).or_insert_with(|| UsageSnapshot {
+            profile_key: key.into(),
             fetched_at: Utc::now(),
             bars: Vec::new(),
             raw_screen: String::new(),

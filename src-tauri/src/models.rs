@@ -14,6 +14,8 @@ pub struct AppData {
     #[serde(default)]
     pub sessions: Vec<Session>,
     #[serde(default)]
+    pub accounts: Vec<ClaudeAccount>,
+    #[serde(default)]
     pub settings: AppSettings,
 }
 
@@ -23,12 +25,55 @@ pub struct AppData {
 pub struct AppSettings {
     #[serde(default = "default_max_parallel")]
     pub max_parallel_sessions: usize,
+    #[serde(default = "default_models")]
+    pub models: Vec<ModelOption>,
+    #[serde(default)]
+    pub default_model: Option<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { max_parallel_sessions: default_max_parallel() }
+        Self { max_parallel_sessions: default_max_parallel(), models: default_models(), default_model: None }
     }
+}
+
+/// A model alias or full name offered in the model pickers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOption {
+    pub value: String,
+    pub label: String,
+}
+
+/// Aliases accepted by `claude --model` in the installed version.
+fn default_models() -> Vec<ModelOption> {
+    [("fable", "Fable"), ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")]
+        .iter()
+        .map(|(v, l)| ModelOption { value: v.to_string(), label: l.to_string() })
+        .collect()
+}
+
+/// How a Claude account authenticates; secrets live in the OS keychain.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AccountKind {
+    OauthToken,
+    ApiKey,
+    SystemLogin,
+}
+
+/// A Claude account usable by projects (global to the app).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeAccount {
+    pub id: String,
+    pub alias: String,
+    pub kind: AccountKind,
+    #[serde(default)]
+    pub token_hint: Option<String>,
+    #[serde(default)]
+    pub default_model: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 fn default_max_parallel() -> usize {
@@ -106,6 +151,10 @@ pub struct Project {
     pub last_opened_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub repos: Vec<Repo>,
+    #[serde(default)]
+    pub account_id: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 /// A git repository registered in a project.
