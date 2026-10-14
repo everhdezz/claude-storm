@@ -59,7 +59,6 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
         />
         <Group justify="space-between" gap="xs" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" miw={0}>
-            <AccountLink />
             <Tooltip label="Modelo solo para este mensaje (puedes escribir uno)" openDelay={400}>
               <Autocomplete
                 size="xs"
@@ -91,6 +90,9 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
           )}
         </Group>
       </div>
+      <Group justify="flex-end" mt={6} px={4}>
+        <AccountLink />
+      </Group>
     </form>
   );
 }
