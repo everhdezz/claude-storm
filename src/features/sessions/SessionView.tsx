@@ -5,8 +5,8 @@ import { IconDots, IconFileDiff, IconGitBranch, IconGitCommit, IconGitMerge, Ico
 import { useNavigate, useParams } from "react-router";
 import {
   isBusy,
-  modelLabel,
   PERMISSION_OPTIONS,
+  sessionModelLabel,
   sendSessionPrompt,
   sessionCommit,
   sessionMerge,
@@ -27,7 +27,7 @@ import projectClasses from "../project/project.module.css";
 /** Center island for a selected session: conversation, branch actions and composer. */
 export function SessionView() {
   const { sessionId = "" } = useParams();
-  const { project, sessions, settings, refreshGit } = useProjectContext();
+  const { project, sessions, settings, account, refreshGit } = useProjectContext();
   const navigate = useNavigate();
   const session = sessions.find((s) => s.id === sessionId);
   const { items, streaming, loading } = useSessionChat(sessionId);
@@ -137,9 +137,11 @@ export function SessionView() {
             <SessionStatusBadge session={session} />
           </Group>
           <Group gap={6} mt={2} wrap="nowrap">
-            <Badge size="xs" variant="default">
-              {modelLabel(session.model, settings.catalog)}
-            </Badge>
+            <Tooltip label="Modelo">
+              <Badge size="xs" variant="default">
+                {sessionModelLabel(session, account, settings)}
+              </Badge>
+            </Tooltip>
             {repoNames.map((n) => (
               <Badge key={n} size="xs" variant="light" color="gray">
                 {n}

@@ -15,6 +15,7 @@ import remarkGfm from "remark-gfm";
 import { modelLabel } from "../../api/sessions";
 import type { ChatItem } from "../../types";
 import { relativeTime } from "../../utils/time";
+import { useProjectContext } from "../project/ProjectContext";
 import { DiffBlock } from "./DiffBlock";
 import classes from "./sessions.module.css";
 
@@ -62,6 +63,8 @@ export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: 
 
 /** The user's prompt, right aligned. */
 function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> }) {
+  const { settings } = useProjectContext();
+  const catalog = settings.catalog;
   return (
     <div className={classes.promptRow}>
       <Paper className={`${classes.prompt} selectable`} radius="md" px="md" py={8}>
@@ -70,8 +73,7 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
         </Text>
       </Paper>
       <Text size="xs" c="dimmed" mt={4}>
-        {item.account ? `${item.account} · ` : ""}
-        {modelLabel(item.model)} · {relativeTime(item.at)}
+        {[item.account, item.model ? modelLabel(item.model, catalog) : null, relativeTime(item.at)].filter(Boolean).join(" · ")}
       </Text>
     </div>
   );

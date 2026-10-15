@@ -3,7 +3,7 @@ import { ActionIcon, Badge, Group, Menu, Radio, Stack, Text, TextInput } from "@
 import { modals } from "@mantine/modals";
 import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconGitBranch, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
 import { useNavigate } from "react-router";
-import { archiveSession, deleteSession, duplicateSession, isBusy, modelLabel, stopSession, updateSession } from "../../api/sessions";
+import { archiveSession, deleteSession, duplicateSession, isBusy, sessionModelLabel, stopSession, updateSession } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import type { Session, WorktreeCleanup } from "../../types";
 import { relativeTime } from "../../utils/time";
@@ -13,7 +13,7 @@ import classes from "./sessions.module.css";
 
 /** Card of one session in the Chats tool window. */
 export function SessionCard({ session, selected }: { session: Session; selected: boolean }) {
-  const { project, settings } = useProjectContext();
+  const { project, settings, account } = useProjectContext();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const repoNames = session.repoIds.map((id) => project.repos.find((r) => r.id === id)?.name).filter(Boolean) as string[];
@@ -108,7 +108,7 @@ export function SessionCard({ session, selected }: { session: Session; selected:
       <Group gap={4} mt={4}>
         <SessionStatusBadge session={session} />
         <Badge size="xs" variant="default">
-          {modelLabel(session.model, settings.catalog)}
+          {sessionModelLabel(session, account, settings)}
         </Badge>
         {repoNames.map((n) => (
           <Badge key={n} size="xs" variant="light" color="gray">

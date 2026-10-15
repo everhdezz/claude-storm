@@ -128,6 +128,7 @@ export interface Session {
   archived: boolean;
   lastError: string | null;
   baseBranches: Record<string, string>;
+  lastModel: string | null;
 }
 
 export type ChatItem =

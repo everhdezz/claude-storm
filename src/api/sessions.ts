@@ -1,4 +1,4 @@
-import type { CatalogModel, ChatItem, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
+import type { AppSettings, CatalogModel, ChatItem, ClaudeAccount, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
 import { call } from "./tauri";
 
 export const SESSION_CHANGED = "session-changed";
@@ -90,4 +90,10 @@ export function isBusy(session: Session): boolean {
 export function modelLabel(model: string | null | undefined, catalog: CatalogModel[] = []): string {
   if (!model) return "Por defecto";
   return catalog.find((m) => m.id === model)?.label ?? model;
+}
+
+/** Model a session actually uses: the one Claude Code reported, else the configured fallback chain. */
+export function sessionModelLabel(session: Session, account: ClaudeAccount | null, settings: AppSettings): string {
+  const model = session.lastModel ?? session.model ?? account?.defaultModel ?? settings.defaultModel;
+  return model ? modelLabel(model, settings.catalog) : "Modelo de Claude Code";
 }

@@ -88,6 +88,7 @@ function fixtureSession(id: string, patch: Partial<Session>): Session {
     archived: false,
     lastError: null,
     baseBranches: {},
+    lastModel: "claude-opus-5-5",
     ...patch,
   };
 }

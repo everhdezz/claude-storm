@@ -138,6 +138,8 @@ pub struct Session {
     pub last_error: Option<String>,
     #[serde(default)]
     pub base_branches: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub last_model: Option<String>,
 }
 
 fn default_version() -> u32 {

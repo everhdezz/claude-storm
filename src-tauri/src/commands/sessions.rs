@@ -109,6 +109,7 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         archived: false,
         last_error: None,
         base_branches: Default::default(),
+        last_model: None,
     };
 
     if session.mode == SessionMode::Isolated {
@@ -220,6 +221,7 @@ pub fn duplicate_session(app: AppHandle, store: State<Store>, session_id: String
         files_touched: Vec::new(),
         archived: false,
         last_error: None,
+        last_model: None,
         ..source.clone()
     };
     History::new(&store.dir()).copy(&source.id, &copy.id)?;

@@ -322,7 +322,15 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
     let parsed = parse_line(line);
     if parsed.started {
         turn.started = true;
-        let _ = app.state::<Store>().update_session(id, |s| s.has_conversation = true);
+        let model = parsed.model.clone();
+        if let Ok(updated) = app.state::<Store>().update_session(id, |s| {
+            s.has_conversation = true;
+            if model.is_some() {
+                s.last_model = model;
+            }
+        }) {
+            emit_session(app, &updated);
+        }
     }
     let Ok(session) = app.state::<Store>().session(id) else { return };
     if let Some(text) = &parsed.delta {
@@ -457,6 +465,7 @@ mod e2e {
                     archived: false,
                     last_error: None,
                     base_branches: Default::default(),
+                    last_model: None,
                 });
                 Ok(())
             })

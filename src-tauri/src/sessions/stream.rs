@@ -42,6 +42,7 @@ pub struct Parsed {
     pub items: Vec<ChatItem>,
     pub delta: Option<String>,
     pub started: bool,
+    pub model: Option<String>,
     pub rate_windows: Vec<RateWindow>,
 }
 
@@ -50,7 +51,10 @@ pub fn parse_line(line: &str) -> Parsed {
     let mut out = Parsed::default();
     let Ok(v) = serde_json::from_str::<Value>(line) else { return out };
     match v.get("type").and_then(Value::as_str) {
-        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("init") => out.started = true,
+        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("init") => {
+            out.started = true;
+            out.model = v.get("model").and_then(Value::as_str).map(str::to_string);
+        }
         Some("stream_event") => {
             let delta = v.pointer("/event/delta");
             if delta.and_then(|d| d.get("type")).and_then(Value::as_str) == Some("text_delta") {
@@ -186,6 +190,7 @@ mod tests {
     fn detects_init_deltas_and_rate_limits() {
         let parsed = parse_all();
         assert!(parsed.iter().any(|p| p.started));
+        assert!(parsed.iter().any(|p| p.model.as_deref() == Some("claude-haiku-5-5")));
         let text: String = parsed.iter().filter_map(|p| p.delta.clone()).collect();
         assert_eq!(text, "hola");
         let windows: Vec<_> = parsed.iter().flat_map(|p| p.rate_windows.clone()).collect();
