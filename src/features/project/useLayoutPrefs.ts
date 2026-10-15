@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type LeftTool = "projects" | "chats";
 export type BottomTool = "terminal" | "services";
@@ -11,45 +11,29 @@ export interface LayoutPrefs {
   bottomHeight: number;
 }
 
-const KEY = "claude-storm.layout";
 const ORDER: LeftTool[] = ["projects", "chats"];
-const DEFAULTS: LayoutPrefs = { leftTools: ["projects"], bottom: null, leftWidth: 300, leftTopHeight: 320, bottomHeight: 300 };
+const DEFAULTS: LayoutPrefs = { leftTools: ["projects", "chats"], bottom: null, leftWidth: 300, leftTopHeight: 320, bottomHeight: 300 };
 
-/** Reads saved layout preferences (migrating the old single `left` tool), tolerating unavailable storage. */
-function load(): LayoutPrefs {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULTS;
-    const saved = JSON.parse(raw) as Partial<LayoutPrefs> & { left?: LeftTool | null };
-    const leftTools = saved.leftTools ?? (saved.left ? [saved.left] : saved.left === null ? [] : DEFAULTS.leftTools);
-    return { ...DEFAULTS, ...saved, leftTools };
-  } catch {
-    return DEFAULTS;
-  }
-}
-
-/** Tool window visibility and sizes, remembered across launches. */
-export function useLayoutPrefs() {
-  const [prefs, setPrefs] = useState<LayoutPrefs>(load);
+/** Tool window visibility and sizes; starts from the project's saved layout and reports every change. */
+export function useLayoutPrefs(saved: Partial<LayoutPrefs> | undefined, onChange: (prefs: LayoutPrefs) => void) {
+  const [prefs, setPrefs] = useState<LayoutPrefs>(() => ({ ...DEFAULTS, ...saved }));
+  const first = useRef(true);
+  const report = useRef(onChange);
+  report.current = onChange;
 
   useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(prefs));
-    } catch {
+    if (first.current) {
+      first.current = false;
       return;
     }
+    report.current(prefs);
   }, [prefs]);
 
   function toggleLeft(tool: LeftTool) {
     setPrefs((p) => {
-      const on = p.leftTools.includes(tool);
-      const next = on ? p.leftTools.filter((t) => t !== tool) : [...p.leftTools, tool];
+      const next = p.leftTools.includes(tool) ? p.leftTools.filter((t) => t !== tool) : [...p.leftTools, tool];
       return { ...p, leftTools: ORDER.filter((t) => next.includes(t)) };
     });
-  }
-
-  function showLeft(tool: LeftTool) {
-    setPrefs((p) => (p.leftTools.includes(tool) ? p : { ...p, leftTools: ORDER.filter((t) => t === tool || p.leftTools.includes(t)) }));
   }
 
   function toggleBottom(tool: BottomTool) {
@@ -64,5 +48,5 @@ export function useLayoutPrefs() {
     setPrefs((p) => ({ ...p, ...patch }));
   }
 
-  return { prefs, toggleLeft, showLeft, toggleBottom, showBottom, resize };
+  return { prefs, toggleLeft, toggleBottom, showBottom, resize };
 }

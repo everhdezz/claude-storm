@@ -9,10 +9,10 @@ import { SessionCard } from "../sessions/SessionCard";
 
 /** Left tool window with the project's parallel Claude sessions. */
 export function ChatsTool({ style }: { style?: React.CSSProperties }) {
-  const { sessions } = useProjectContext();
+  const { sessions, ui } = useProjectContext();
   const { sessionId } = useParams();
   const [creating, setCreating] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = useState(ui.initial.showArchived ?? false);
   const visible = sessions.filter((s) => s.archived === showArchived);
   const working = sessions.filter((s) => s.status === "working").length;
   const queued = sessions.filter((s) => s.status === "queued").length;
@@ -53,7 +53,11 @@ export function ChatsTool({ style }: { style?: React.CSSProperties }) {
         )}
       </ScrollArea>
       <div style={{ padding: "6px 12px 10px" }}>
-        <Switch size="xs" label="Ver archivadas" checked={showArchived} onChange={(e) => setShowArchived(e.currentTarget.checked)} />
+        <Switch size="xs" label="Ver archivadas" checked={showArchived} onChange={(e) => {
+            const value = e.currentTarget.checked;
+            setShowArchived(value);
+            ui.save({ showArchived: value });
+          }} />
       </div>
       <NewSessionModal opened={creating} onClose={() => setCreating(false)} />
     </Island>

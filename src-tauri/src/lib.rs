@@ -82,6 +82,7 @@ pub fn run() {
             commands::projects::create_project,
             commands::projects::rename_project,
             commands::projects::delete_project,
+            commands::projects::save_project_ui_state,
             commands::windows::open_project_window,
             commands::windows::focus_welcome_window,
             commands::repos::detect_repo,

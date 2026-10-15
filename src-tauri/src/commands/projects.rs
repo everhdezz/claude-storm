@@ -69,6 +69,7 @@ pub fn create_project(app: AppHandle, store: State<Store>, name: String) -> AppR
         account_id: None,
         color: None,
         layout: Vec::new(),
+        ui_state: None,
     };
     let created = project.clone();
     store.write(|d| {
@@ -110,4 +111,14 @@ pub fn delete_project(app: AppHandle, store: State<Store>, id: String) -> AppRes
     }
     notify_projects_changed(&app);
     Ok(())
+}
+
+/// Persists the window layout and tool-window state of a project (opaque JSON owned by the UI).
+/// Does not broadcast a change, so saving never reloads the window.
+#[tauri::command]
+pub fn save_project_ui_state(store: State<Store>, id: String, state: serde_json::Value) -> AppResult<()> {
+    store.write(|d| {
+        find_project_mut(d, &id)?.ui_state = Some(state);
+        Ok(())
+    })
 }

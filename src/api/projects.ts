@@ -37,3 +37,8 @@ export function openProjectWindow(id: string): Promise<void> {
 export function focusWelcomeWindow(): Promise<void> {
   return call("focus_welcome_window");
 }
+
+/** Persists the layout and tool-window state of a project window. */
+export function saveProjectUiState(id: string, state: unknown): Promise<void> {
+  return call("save_project_ui_state", { id, state });
+}

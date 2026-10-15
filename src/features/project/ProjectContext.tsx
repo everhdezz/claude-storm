@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { AppSettings, ClaudeAccount, ProcessInfo, Project, Session } from "../../types";
 import type { SettingsSection } from "../settings/SettingsModal";
+import type { ProjectUiState } from "./useUiState";
 import type { GitStatusMap } from "./useGitStatuses";
 
 export interface ProjectContextValue {
@@ -13,6 +14,7 @@ export interface ProjectContextValue {
   settings: AppSettings;
   account: ClaudeAccount | null;
   openSettings: (section?: SettingsSection) => void;
+  ui: { initial: ProjectUiState; save: (patch: ProjectUiState) => void };
   selectedService: string | null;
   selectService: (processId: string) => void;
   revealService: (processId: string) => void;

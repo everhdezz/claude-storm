@@ -28,6 +28,7 @@ export interface Project {
   accountId: string | null;
   color: string | null;
   layout: LayoutItem[];
+  uiState: unknown;
 }
 
 export type LayoutItem =

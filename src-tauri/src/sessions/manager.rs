@@ -511,6 +511,7 @@ mod e2e {
                     account_id: Some("acc".into()),
                     color: None,
                     layout: Vec::new(),
+                    ui_state: None,
                 });
                 d.accounts.push(crate::models::ClaudeAccount {
                     id: "acc".into(),

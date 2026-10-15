@@ -162,6 +162,8 @@ pub struct Project {
     pub color: Option<String>,
     #[serde(default)]
     pub layout: Vec<LayoutItem>,
+    #[serde(default)]
+    pub ui_state: Option<serde_json::Value>,
 }
 
 /// Top-level entry of a project's repo tree: a loose repo or a one-level group of repos.
@@ -317,6 +319,7 @@ mod tests {
                 LayoutItem::Repo { repo_id: "b".into() },
                 LayoutItem::Repo { repo_id: "a".into() },
             ],
+            ui_state: None,
         };
         assert_eq!(
             project.normalized_layout(),

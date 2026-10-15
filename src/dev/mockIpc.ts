@@ -9,6 +9,7 @@ const projects: Project[] = [
     name: "tickesoft",
     accountId: "a1",
     color: "#8a5cc7",
+    uiState: null,
     layout: [
       { kind: "group", id: "g1", name: "Backend", collapsed: false, repoIds: ["r1", "r3"] },
       { kind: "repo", repoId: "r2" },
@@ -62,7 +63,7 @@ const projects: Project[] = [
       },
     ],
   },
-  { id: "p2", name: "payser-api", accountId: null, color: null, layout: [], createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
+  { id: "p2", name: "payser-api", accountId: null, color: null, layout: [], uiState: null, createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
 ];
 
 /** Builds a fixture session. */
@@ -176,8 +177,11 @@ export function installMocks(): void {
       switch (cmd) {
         case "list_projects":
           return projects.map(summarize);
-        case "get_project":
-          return projects.find((p) => p.id === a.id);
+        case "get_project": {
+          const found = projects.find((p) => p.id === a.id);
+          const saved = sessionStorage.getItem(`mock-ui-${a.id}`);
+          return found && saved ? { ...found, uiState: JSON.parse(saved) } : found;
+        }
         case "git_status":
           return { branch: "main", ahead: 1, behind: 0, staged: 0, modified: 3, untracked: 1, conflicted: 0 };
         case "start_command":
@@ -215,6 +219,12 @@ export function installMocks(): void {
             defaultModel: null,
             maxParallelSessions: 3,
           };
+        case "save_project_ui_state": {
+          const target = projects.find((p) => p.id === a.id);
+          if (target) target.uiState = (args as { state: unknown }).state;
+          sessionStorage.setItem(`mock-ui-${a.id}`, JSON.stringify((args as { state: unknown }).state));
+          return null;
+        }
         case "save_repo_layout": {
           const project = projects.find((p) => p.id === a.projectId);
           if (project) project.layout = (args as { layout: Project["layout"] }).layout;

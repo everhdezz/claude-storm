@@ -42,8 +42,17 @@ const NODE_FRAMEWORKS: Framework[] = ["vite", "next", "react", "expo", "node"];
 
 /** Left tool window: repos and one-level groups, reorderable by drag and drop. */
 export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
-  const { project } = useProjectContext();
+  const { project, ui } = useProjectContext();
   const addRepo = useAddFolder(project.id);
+  const [expanded, setExpanded] = useState<string[]>(ui.initial.expandedRepos ?? []);
+
+  function toggleRepo(repoId: string) {
+    setExpanded((prev) => {
+      const next = prev.includes(repoId) ? prev.filter((id) => id !== repoId) : [...prev, repoId];
+      ui.save({ expandedRepos: next });
+      return next;
+    });
+  }
   const [editing, setEditing] = useState<Repo | null>(null);
   const [layout, setLayout] = useState<LayoutItem[]>(project.layout);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -156,6 +165,8 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
                   <SortableRow key={item.id} item={item} depth={depth}>
                     <RepoNode
                       repo={repo}
+                      open={expanded.includes(repo.id)}
+                      onToggle={() => toggleRepo(repo.id)}
                       onEdit={() => setEditing(repo)}
                       groups={groups}
                       currentGroupId={item.parentId?.slice("group:".length) ?? null}
@@ -259,16 +270,17 @@ function GroupRow({ group, renaming, onRename, onRenameDone, onToggle, onUngroup
 /** Expandable repo card; children are its runnable commands, settings live in the "…" menu. */
 interface RepoNodeProps {
   repo: Repo;
+  open: boolean;
+  onToggle: () => void;
   onEdit: () => void;
   groups: Extract<LayoutItem, { kind: "group" }>[];
   currentGroupId: string | null;
   onMove: (groupId: string | null) => void;
 }
 
-function RepoNode({ repo, onEdit, groups, currentGroupId, onMove }: RepoNodeProps) {
+function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove }: RepoNodeProps) {
   const { project, gitStatuses, gitErrors, processes, openTerminalAt } = useProjectContext();
   const run = useRunCommand();
-  const [open, setOpen] = useState(false);
   const procs = repo.commands.map((c) => processes[processKey(repo.id, c.id)]).filter((p) => !!p);
   const isNode = NODE_FRAMEWORKS.includes(repo.framework);
   const devCommand = repo.commands.find((c) => c.longRunning);
@@ -309,7 +321,7 @@ function RepoNode({ repo, onEdit, groups, currentGroupId, onMove }: RepoNodeProp
 
   return (
     <div>
-      <div className={classes.row} onClick={() => setOpen((v) => !v)}>
+      <div className={classes.row} onClick={onToggle}>
         {open ? <IconChevronDown size={14} className={classes.chevron} /> : <IconChevronRight size={14} className={classes.chevron} />}
         <FrameworkIcon framework={repo.framework} size={20} />
         <div className={classes.label}>

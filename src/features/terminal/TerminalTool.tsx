@@ -13,19 +13,37 @@ interface TerminalTab {
   title: string;
 }
 
+interface SavedTerminals {
+  tabs: { cwd: string; title: string }[];
+  active: number;
+}
+
 interface TerminalToolProps {
   visible: boolean;
   request: { cwd: string; seq: number } | null;
+  saved?: SavedTerminals;
+  onTabsChange: (state: SavedTerminals) => void;
   style?: React.CSSProperties;
 }
 
 let counter = 0;
 
 /** Tabbed terminal tool window; shells stay alive while the island is hidden. */
-export function TerminalTool({ visible, request, style }: TerminalToolProps) {
+export function TerminalTool({ visible, request, saved, onTabsChange, style }: TerminalToolProps) {
   const { project } = useProjectContext();
-  const [tabs, setTabs] = useState<TerminalTab[]>([]);
-  const [active, setActive] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<TerminalTab[]>(() =>
+    (saved?.tabs ?? []).map((t) => {
+      counter += 1;
+      return { key: `t${counter}`, cwd: t.cwd, title: t.title };
+    }),
+  );
+  const [active, setActive] = useState<string | null>(() => tabs[saved?.active ?? 0]?.key ?? null);
+  const report = useRef(onTabsChange);
+  report.current = onTabsChange;
+
+  useEffect(() => {
+    report.current({ tabs: tabs.map((t) => ({ cwd: t.cwd, title: t.title })), active: Math.max(0, tabs.findIndex((t) => t.key === active)) });
+  }, [tabs, active]);
   const opening = useRef(false);
 
   async function add(cwd?: string) {

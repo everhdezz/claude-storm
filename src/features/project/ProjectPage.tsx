@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Center, Loader, Text } from "@mantine/core";
 import { IconFolder, IconMessageCircle, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
-import { Outlet, useParams } from "react-router";
+import { Outlet, useNavigate, useParams } from "react-router";
 import { isActive } from "../../api/processes";
 import { Island } from "../../components/ide/Island";
 import { Splitter } from "../../components/ide/Splitter";
@@ -21,19 +21,13 @@ import { ProjectTitleBar } from "./ProjectTitleBar";
 import { useGitStatuses } from "./useGitStatuses";
 import { type BottomTool, type LeftTool, useLayoutPrefs } from "./useLayoutPrefs";
 import { useProject } from "./useProject";
+import { useUiState } from "./useUiState";
+import type { Project } from "../../types";
 
-/** Root of a project window: JetBrains-style tool stripe, islands and status bar. */
+/** Root of a project window: loads the project, then renders its workspace. */
 export function ProjectPage() {
-  const { projectId = "", sessionId = null } = useParams();
+  const { projectId = "" } = useParams();
   const { project, error } = useProject(projectId);
-  const git = useGitStatuses(project?.repos ?? []);
-  const { processes } = useProcesses(projectId);
-  const sessions = useSessions(projectId, sessionId);
-  const settings = useSettings();
-  const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
-  const layout = useLayoutPrefs();
-  const [selectedService, setSelectedService] = useState<string | null>(null);
-  const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
 
   if (error) {
     return (
@@ -49,6 +43,44 @@ export function ProjectPage() {
       </Center>
     );
   }
+  return <ProjectWorkspace key={project.id} project={project} />;
+}
+
+/** JetBrains-style tool stripe, islands and status bar; restores and saves the window state. */
+function ProjectWorkspace({ project }: { project: Project }) {
+  const { sessionId = null } = useParams();
+  const navigate = useNavigate();
+  const ui = useUiState(project.id, project.uiState);
+  const git = useGitStatuses(project.repos);
+  const { processes } = useProcesses(project.id);
+  const sessions = useSessions(project.id, sessionId);
+  const settings = useSettings();
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
+  const layout = useLayoutPrefs(ui.initial.layout, (prefs) => ui.save({ layout: prefs }));
+  const [selectedService, setSelectedService] = useState<string | null>(ui.initial.selectedService ?? null);
+  const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
+  const restored = useRef(false);
+
+  useEffect(() => {
+    if (restored.current) return;
+    const wanted = ui.initial.sessionId;
+    if (!wanted || sessionId) {
+      restored.current = true;
+      return;
+    }
+    if (sessions.some((s) => s.id === wanted)) {
+      restored.current = true;
+      navigate(`/project/${project.id}/session/${wanted}`, { replace: true });
+    }
+  }, [sessions, sessionId, navigate, project.id, ui.initial.sessionId]);
+
+  useEffect(() => {
+    if (restored.current) ui.save({ sessionId });
+  }, [sessionId, ui]);
+
+  useEffect(() => {
+    ui.save({ selectedService });
+  }, [selectedService, ui]);
 
   const running = Object.values(processes).filter(isActive).length;
   const account = settings.accounts.find((a) => a.id === project.accountId) ?? null;
@@ -85,6 +117,7 @@ export function ProjectPage() {
         settings,
         account,
         openSettings: (section) => setSettingsSection(section ?? "accounts"),
+        ui,
         selectedService,
         selectService: setSelectedService,
         revealService,
@@ -151,6 +184,8 @@ export function ProjectPage() {
           <TerminalTool
             visible={prefs.bottom === "terminal"}
             request={terminalRequest}
+            saved={ui.initial.terminals}
+            onTabsChange={(terminals) => ui.save({ terminals })}
             style={{ height: prefs.bottomHeight, flexShrink: 0 }}
           />
           {prefs.bottom === "services" && (
