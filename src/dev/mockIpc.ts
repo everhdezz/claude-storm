@@ -99,7 +99,7 @@ const sessions: Session[] = [
     title: "Endpoint de reportes en la API",
     status: "done",
     mode: "isolated",
-    branch: "devhub/endpoint-de-reportes-a1b2c3",
+    branch: "claude-storm/endpoint-de-reportes-a1b2c3",
     repoIds: ["r1"],
     summary: "Agregué ReportController con tests.",
     filesTouched: ["a", "b", "c"],

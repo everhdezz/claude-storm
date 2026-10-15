@@ -21,7 +21,7 @@ pub struct ProbeOutput {
 
 /// Runs `claude`, sends `/usage`, waits for the bars to render and returns the screen.
 ///
-/// `accept_trust` may only be true for DevHub's own empty probe folder: trusting it exposes nothing.
+/// `accept_trust` may only be true for claude-storm's own empty probe folder: trusting it exposes nothing.
 pub fn run(
     claude: &Path,
     cwd: &Path,
@@ -170,7 +170,7 @@ fn accept_trust_dialog(screen: &mut Screen, writer: &mut Box<dyn Write + Send>) 
         screen.wait(Duration::from_millis(800), |t| yes_selected.is_match(t));
     }
     if !yes_selected.is_match(&screen.text()) {
-        return Err(AppError::msg("Could not select the trust option for DevHub's probe folder."));
+        return Err(AppError::msg("Could not select the trust option for claude-storm's probe folder."));
     }
     writer.write_all(b"\r")?;
     writer.flush()?;
@@ -258,13 +258,13 @@ impl Screen {
 
 #[cfg(test)]
 mod manual {
-    /// Runs the real probe; `DEVHUB_PROBE_CWD=<trusted dir> cargo test real_probe -- --ignored --nocapture`.
+    /// Runs the real probe; `CLAUDE_STORM_PROBE_CWD=<trusted dir> cargo test real_probe -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn real_probe() {
-        let cwd = std::env::var("DEVHUB_PROBE_CWD").expect("set DEVHUB_PROBE_CWD");
+        let cwd = std::env::var("CLAUDE_STORM_PROBE_CWD").expect("set CLAUDE_STORM_PROBE_CWD");
         let claude = crate::shell_env::which("claude").expect("claude in PATH");
-        let out = super::run(&claude, std::path::Path::new(&cwd), &Default::default(), &["ANTHROPIC_API_KEY"], std::env::var("DEVHUB_PROBE_TRUST").is_ok()).unwrap();
+        let out = super::run(&claude, std::path::Path::new(&cwd), &Default::default(), &["ANTHROPIC_API_KEY"], std::env::var("CLAUDE_STORM_PROBE_TRUST").is_ok()).unwrap();
         let bars = crate::usage::parser::parse_usage(&out.screen, chrono::Utc::now());
         for b in &bars {
             println!("{} -> {}% resets {:?} ({:?})", b.label, b.percent, b.resets_text, b.resets_at);
@@ -276,7 +276,7 @@ mod manual {
     #[test]
     #[ignore]
     fn real_model_picker() {
-        let cwd = std::env::var("DEVHUB_PROBE_CWD").expect("set DEVHUB_PROBE_CWD");
+        let cwd = std::env::var("CLAUDE_STORM_PROBE_CWD").expect("set CLAUDE_STORM_PROBE_CWD");
         let claude = crate::shell_env::which("claude").expect("claude in PATH");
         let models = super::read_model_picker(&claude, std::path::Path::new(&cwd), &Default::default(), &["ANTHROPIC_API_KEY"], true).unwrap();
         for m in &models {
@@ -312,12 +312,12 @@ mod onboarding_capture {
     use std::io::{Read, Write};
     use std::time::Duration;
 
-    /// Prints the first screens of a profile: `DEVHUB_PROFILE_DIR=<dir> cargo test capture_first_run -- --ignored --nocapture`.
+    /// Prints the first screens of a profile: `CLAUDE_STORM_PROFILE_DIR=<dir> cargo test capture_first_run -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn capture_first_run() {
-        let profile = std::env::var("DEVHUB_PROFILE_DIR").expect("set DEVHUB_PROFILE_DIR");
-        let cwd = std::env::temp_dir().join("devhub-onboarding-probe");
+        let profile = std::env::var("CLAUDE_STORM_PROFILE_DIR").expect("set CLAUDE_STORM_PROFILE_DIR");
+        let cwd = std::env::temp_dir().join("claude-storm-onboarding-probe");
         std::fs::create_dir_all(&cwd).unwrap();
         let claude = crate::shell_env::which("claude").unwrap();
         let mut env = std::collections::HashMap::new();

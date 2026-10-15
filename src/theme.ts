@@ -1,6 +1,6 @@
 import { createTheme } from "@mantine/core";
 
-/** Mantine theme shared by every DevHub window. */
+/** Mantine theme shared by every claude-storm window. */
 export const theme = createTheme({
   primaryColor: "indigo",
   defaultRadius: "md",

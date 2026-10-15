@@ -50,7 +50,7 @@ impl Default for AppSettings {
 /// How a Claude account authenticates.
 ///
 /// `Profile` accounts are isolated Claude Code config dirs where Claude Code itself performs and
-/// stores the login; DevHub never touches those credentials. `OauthToken` only exists to migrate
+/// stores the login; claude-storm never touches those credentials. `OauthToken` only exists to migrate
 /// data from older versions and is converted to `Profile` on load.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -217,7 +217,7 @@ pub struct Repo {
     pub commands: Vec<RepoCommand>,
 }
 
-/// Frameworks DevHub knows how to preconfigure.
+/// Frameworks claude-storm knows how to preconfigure.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Framework {

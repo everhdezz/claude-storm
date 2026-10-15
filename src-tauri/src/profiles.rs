@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn copies_shared_config_but_never_credentials_or_history() {
-        let root = std::env::temp_dir().join(format!("devhub-profile-sync-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("claude-storm-profile-sync-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let home = root.join("home/.claude");
         fs::create_dir_all(home.join("agents")).unwrap();

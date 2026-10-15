@@ -54,11 +54,11 @@ pub fn run() {
                 }
             });
             #[cfg(debug_assertions)]
-            if let Ok(id) = std::env::var("DEVHUB_OPEN_PROJECT") {
+            if let Ok(id) = std::env::var("CLAUDE_STORM_OPEN_PROJECT") {
                 let handle = app.handle().clone();
                 let store = app.state::<Store>();
                 if let Err(err) = commands::windows::open_project_window(handle, store, id) {
-                    eprintln!("DEVHUB_OPEN_PROJECT failed: {err}");
+                    eprintln!("CLAUDE_STORM_OPEN_PROJECT failed: {err}");
                 }
             }
             Ok(())
@@ -139,7 +139,7 @@ pub fn run() {
             commands::settings::set_project_color,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building DevHub");
+        .expect("error while building claude-storm");
 
     app.run(|handle, event| {
         if let RunEvent::ExitRequested { code: None, api, .. } = &event {

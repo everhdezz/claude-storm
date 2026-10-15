@@ -8,9 +8,9 @@ use crate::models::{AccountKind, ClaudeAccount};
 use crate::store::Store;
 use crate::usage::service::{UsageService, UsageSnapshot, UsageTarget};
 
-/// Empty folder owned by DevHub where `/usage` is queried, so no real repo needs to be trusted.
+/// Empty folder owned by claude-storm where `/usage` is queried, so no real repo needs to be trusted.
 fn probe_cwd(app: &AppHandle) -> PathBuf {
-    app.path().app_data_dir().map(|d| d.join("claude-probe")).unwrap_or_else(|_| std::env::temp_dir().join("devhub-claude-probe"))
+    app.path().app_data_dir().map(|d| d.join("claude-probe")).unwrap_or_else(|_| std::env::temp_dir().join("claude-storm-claude-probe"))
 }
 
 /// Account selected by a project, if any.

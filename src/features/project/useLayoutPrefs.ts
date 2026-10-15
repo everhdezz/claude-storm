@@ -11,6 +11,7 @@ export interface LayoutPrefs {
   bottomHeight: number;
 }
 
+/** Storage key kept from the former app name so saved layouts survive the rename. */
 const KEY = "devhub.layout";
 const ORDER: LeftTool[] = ["projects", "chats"];
 const DEFAULTS: LayoutPrefs = { leftTools: ["projects"], bottom: null, leftWidth: 300, leftTopHeight: 320, bottomHeight: 300 };

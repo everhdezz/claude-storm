@@ -52,7 +52,7 @@ interface LoginWizardProps {
   onCreated: (account: ClaudeAccount) => void;
 }
 
-/** Visual wizard: Claude Code logs in inside a hidden PTY; DevHub only relays URL and code. */
+/** Visual wizard: Claude Code logs in inside a hidden PTY; claude-storm only relays URL and code. */
 export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWizardProps) {
   const { settings } = useProjectContext();
   const [step, setStep] = useState<Step>("data");
@@ -251,7 +251,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
               onChange={(v) => setValue("defaultModel", v ?? "")}
             />
             <Text size="xs" c="dimmed">
-              Se crea un perfil aislado de Claude Code. El inicio de sesión lo hace Claude Code en tu navegador; DevHub nunca ve tu contraseña ni tus
+              Se crea un perfil aislado de Claude Code. El inicio de sesión lo hace Claude Code en tu navegador; claude-storm nunca ve tu contraseña ni tus
               credenciales.
             </Text>
             <Group justify="flex-end">

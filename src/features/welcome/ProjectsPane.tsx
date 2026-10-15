@@ -59,7 +59,7 @@ export function ProjectsPane() {
       centered: true,
       children: (
         <Text size="sm">
-          Solo se elimina el registro del proyecto en DevHub. Los repos y archivos en disco no se tocan.
+          Solo se elimina el registro del proyecto en claude-storm. Los repos y archivos en disco no se tocan.
         </Text>
       ),
       labels: { confirm: "Quitar", cancel: "Cancelar" },

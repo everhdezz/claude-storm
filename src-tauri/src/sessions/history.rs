@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn appends_and_reads_back() {
-        let dir = std::env::temp_dir().join(format!("devhub-history-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("claude-storm-history-{}", std::process::id()));
         let history = History::new(&dir);
         history.append("s1", &[ChatItem::Text { text: "a".into() }]).unwrap();
         history.append("s1", &[ChatItem::Notice { level: "info".into(), text: "b".into() }]).unwrap();

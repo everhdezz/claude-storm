@@ -68,7 +68,7 @@ struct LogEvent<'a> {
     line: &'a LogLine,
 }
 
-/// What DevHub needs to launch a command.
+/// What claude-storm needs to launch a command.
 pub struct SpawnRequest {
     pub project_id: String,
     pub repo_id: String,

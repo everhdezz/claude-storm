@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn full_worktree_cycle() {
-        let root = std::env::temp_dir().join(format!("devhub-wt-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("claude-storm-wt-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let repo = root.join("repo");
         fs::create_dir_all(&repo).unwrap();
@@ -106,16 +106,16 @@ mod tests {
         run_git(&repo, &["commit", "-qm", "init"]).unwrap();
 
         let wt = root.join("wt/repo");
-        add(&repo, &wt, "devhub/test").unwrap();
+        add(&repo, &wt, "claude-storm/test").unwrap();
         fs::write(wt.join("a.txt"), "two\n").unwrap();
         fs::write(wt.join("b.txt"), "new\n").unwrap();
         let d = diff(&wt, "main").unwrap();
         assert!(d.contains("+two") && d.contains("b.txt"), "{d}");
         assert!(commit(&wt, "change").unwrap());
         assert!(!commit(&wt, "noop").unwrap());
-        merge(&repo, "main", "devhub/test").unwrap();
+        merge(&repo, "main", "claude-storm/test").unwrap();
         assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "two\n");
-        remove(&repo, &wt, "devhub/test", true).unwrap();
+        remove(&repo, &wt, "claude-storm/test", true).unwrap();
         assert!(!wt.exists());
         let _ = fs::remove_dir_all(root);
     }

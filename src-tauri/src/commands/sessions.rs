@@ -113,7 +113,7 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
     };
 
     if session.mode == SessionMode::Isolated {
-        let branch = format!("devhub/{}-{}", worktree::slugify(&title), &id[..6]);
+        let branch = format!("claude-storm/{}-{}", worktree::slugify(&title), &id[..6]);
         let repos = session_repos(&store, &session, &project);
         let branch_for_task = branch.clone();
         let bases = tauri::async_runtime::spawn_blocking(move || -> AppResult<Vec<(String, String)>> {
@@ -337,7 +337,7 @@ pub async fn session_diff(store: State<'_, Store>, session_id: String) -> AppRes
 #[tauri::command]
 pub async fn session_commit(store: State<'_, Store>, session_id: String, message: String) -> AppResult<Vec<String>> {
     let (repos, _, _) = isolated_parts(&store, &session_id)?;
-    let message = if message.trim().is_empty() { "DevHub session changes".to_string() } else { message };
+    let message = if message.trim().is_empty() { "claude-storm session changes".to_string() } else { message };
     tauri::async_runtime::spawn_blocking(move || {
         let mut committed = Vec::new();
         for (_, name, _, wt) in repos {

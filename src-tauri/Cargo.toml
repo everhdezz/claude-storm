@@ -1,11 +1,11 @@
 [package]
-name = "devhub"
+name = "claude-storm"
 version = "0.1.0"
 description = "Personal console to group repos by project, run their servers and drive Claude Code"
 edition = "2021"
 
 [lib]
-name = "devhub_lib"
+name = "claude_storm_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

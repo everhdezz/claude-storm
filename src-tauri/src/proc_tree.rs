@@ -98,7 +98,7 @@ mod windows_job {
     unsafe impl Sync for Job {}
 
     impl Job {
-        /// Creates a job with KILL_ON_JOB_CLOSE so members die with DevHub.
+        /// Creates a job with KILL_ON_JOB_CLOSE so members die with claude-storm.
         pub fn new() -> AppResult<Self> {
             unsafe {
                 let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());

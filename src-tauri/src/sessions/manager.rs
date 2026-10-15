@@ -435,7 +435,7 @@ mod attachment_tests {
 
     #[test]
     fn copies_with_unique_names_and_lists_them() {
-        let root = std::env::temp_dir().join(format!("devhub-attach-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("claude-storm-attach-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("src")).unwrap();
         let a = root.join("src/spec.pdf");
@@ -476,7 +476,7 @@ mod e2e {
     #[tokio::test]
     #[ignore]
     async fn session_e2e() {
-        let root = std::env::temp_dir().join(format!("devhub-e2e-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("claude-storm-e2e-{}", std::process::id()));
         let repo = root.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         std::fs::write(repo.join("nota.txt"), "la clave es 7381\n").unwrap();

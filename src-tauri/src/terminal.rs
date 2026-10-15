@@ -161,9 +161,9 @@ mod tests {
         });
         let manager = TerminalManager::default();
         let info = manager.open("p", &std::env::temp_dir().to_string_lossy(), 80, 24, channel).unwrap();
-        manager.write(&info.id, "echo devhub-$((40+2))\r").unwrap();
+        manager.write(&info.id, "echo claude-storm-$((40+2))\r").unwrap();
         let start = Instant::now();
-        while !output.lock().unwrap().contains("devhub-42") {
+        while !output.lock().unwrap().contains("claude-storm-42") {
             assert!(start.elapsed() < Duration::from_secs(15), "no echo: {}", output.lock().unwrap());
             std::thread::sleep(Duration::from_millis(100));
         }

@@ -1,5 +1,5 @@
 //! Drives `claude auth login --claudeai` in a hidden PTY for a profile, so Claude Code performs and
-//! stores the login itself. DevHub only forwards the authorization URL and an optional pasted code.
+//! stores the login itself. claude-storm only forwards the authorization URL and an optional pasted code.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -76,14 +76,14 @@ pub struct LoginManager {
 #[cfg(unix)]
 fn browser_helper(app_data: &Path) -> AppResult<Option<PathBuf>> {
     use std::os::unix::fs::PermissionsExt;
-    let path = app_data.join("bin").join("devhub-login-browser.sh");
+    let path = app_data.join("bin").join("claude-storm-login-browser.sh");
     std::fs::create_dir_all(path.parent().unwrap())?;
-    std::fs::write(&path, "#!/bin/sh\nprintf '%s\\n' \"$1\" > \"$DEVHUB_LOGIN_URL_FILE\"\n")?;
+    std::fs::write(&path, "#!/bin/sh\nprintf '%s\\n' \"$1\" > \"$CLAUDE_STORM_LOGIN_URL_FILE\"\n")?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
     Ok(Some(path))
 }
 
-/// On Windows Claude Code opens the browser itself; DevHub only shows the manual link.
+/// On Windows Claude Code opens the browser itself; claude-storm only shows the manual link.
 #[cfg(windows)]
 fn browser_helper(_app_data: &Path) -> AppResult<Option<PathBuf>> {
     Ok(None)
@@ -100,7 +100,7 @@ impl LoginManager {
         env.insert("CLAUDE_CONFIG_DIR".to_string(), profile_dir.to_string_lossy().to_string());
         if let Some(helper) = browser_helper(app_data)? {
             env.insert("BROWSER".to_string(), helper.to_string_lossy().to_string());
-            env.insert("DEVHUB_LOGIN_URL_FILE".to_string(), url_file.to_string_lossy().to_string());
+            env.insert("CLAUDE_STORM_LOGIN_URL_FILE".to_string(), url_file.to_string_lossy().to_string());
         }
         let removed: Vec<&str> = crate::accounts::AUTH_VARS.to_vec();
         let proc = pty::spawn(&claude.to_string_lossy(), &["auth", "login", "--claudeai"], profile_dir, &env, &removed, 40, 200)?;

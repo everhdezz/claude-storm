@@ -52,7 +52,7 @@ export function AccountsSettings() {
         <div>
           <Title order={4}>Cuentas de Claude</Title>
           <Text size="sm" c="dimmed">
-            Cada suscripción es un perfil aislado donde Claude Code hace y guarda su propio login; DevHub nunca ve esas credenciales.
+            Cada suscripción es un perfil aislado donde Claude Code hace y guarda su propio login; claude-storm nunca ve esas credenciales.
           </Text>
         </div>
         <Menu position="bottom-end" withinPortal>

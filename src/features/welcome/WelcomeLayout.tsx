@@ -16,10 +16,10 @@ export function WelcomeLayout() {
     <div className={classes.shell}>
       <aside className={classes.sidebar}>
         <div className={classes.brand}>
-          <div className={classes.logo}>DH</div>
+          <div className={classes.logo}>CS</div>
           <div>
             <Text fw={600} lh={1.2}>
-              DevHub
+              claude-storm
             </Text>
             <Text size="xs" c="dimmed">
               0.1.0

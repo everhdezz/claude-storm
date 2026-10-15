@@ -129,7 +129,7 @@ export function NewSessionModal({ opened, onClose }: { opened: boolean; onClose:
             />
             <Text size="xs" c="dimmed" mt={6}>
               {mode === "isolated"
-                ? "Claude trabaja en una copia (worktree) con rama devhub/…; luego revisas el diff, haces commit y merge."
+                ? "Claude trabaja en una copia (worktree) con rama claude-storm/…; luego revisas el diff, haces commit y merge."
                 : "Claude edita los repos tal cual están."}
             </Text>
           </div>

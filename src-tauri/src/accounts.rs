@@ -1,8 +1,8 @@
-//! Claude accounts and the environment each one injects when DevHub launches `claude`.
+//! Claude accounts and the environment each one injects when claude-storm launches `claude`.
 //!
 //! Profile accounts point Claude Code at their own `CLAUDE_CONFIG_DIR`; Claude Code stores the
-//! login there (macOS: its own Keychain item, named from a hash of that dir). DevHub never reads,
-//! copies or stores those credentials. Only API keys are kept by DevHub, in the OS keychain.
+//! login there (macOS: its own Keychain item, named from a hash of that dir). claude-storm never reads,
+//! copies or stores those credentials. Only API keys are kept by claude-storm, in the OS keychain.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{AppError, AppResult};
 use crate::models::{AccountKind, ClaudeAccount};
 
+/// Keychain service kept from the app's former name (DevHub) so stored API keys stay readable.
 const SERVICE: &str = "dev.devhub.app";
 
 /// Variables that select Claude credentials or their storage; cleared before applying an account.

@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::sync::OnceLock;
 
-const MARKER: &str = "__DEVHUB_ENV__";
+const MARKER: &str = "__CLAUDE_STORM_ENV__";
 
 /// Variables a parent Claude Code session leaks into child processes; they would make every
-/// `claude` started by DevHub think it is a nested session.
+/// `claude` started by claude-storm think it is a nested session.
 const LEAKED_SESSION_VARS: &[&str] = &[
     "CLAUDECODE",
     "CLAUDE_PID",

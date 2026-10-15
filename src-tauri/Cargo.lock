@@ -514,6 +514,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-storm"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "dirs 6.0.0",
+ "keyring",
+ "libc",
+ "portable-pty",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "thiserror 2.0.21",
+ "tokio",
+ "uuid",
+ "vt100",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -787,32 +813,6 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "devhub"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "dirs 6.0.0",
- "keyring",
- "libc",
- "portable-pty",
- "regex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "thiserror 2.0.21",
- "tokio",
- "uuid",
- "vt100",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

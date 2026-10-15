@@ -60,7 +60,7 @@ async fn run_claude(store: &Store, account: &ClaudeAccount, args: Vec<String>) -
     .map_err(|e| AppError::msg(e.to_string()))?
 }
 
-/// Reads `claude auth status --json` for an account (no credentials are read by DevHub).
+/// Reads `claude auth status --json` for an account (no credentials are read by claude-storm).
 async fn auth_status(store: &Store, account: &ClaudeAccount) -> AppResult<Value> {
     let (_, stdout, stderr) = run_claude(store, account, vec!["auth".into(), "status".into(), "--json".into()]).await?;
     serde_json::from_str(stdout.trim()).map_err(|_| AppError::msg(format!("Unexpected `claude auth status` output: {}", stderr.trim())))

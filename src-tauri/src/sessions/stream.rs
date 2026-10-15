@@ -38,7 +38,7 @@ pub struct RateWindow {
     pub resets_at: Option<DateTime<Utc>>,
 }
 
-/// What a single stream line means for DevHub.
+/// What a single stream line means for claude-storm.
 #[derive(Debug, Default, PartialEq)]
 pub struct Parsed {
     pub items: Vec<ChatItem>,

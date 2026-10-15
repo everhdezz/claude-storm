@@ -13,6 +13,8 @@ pub struct Store {
 
 impl Store {
     /// Loads the store from disk, starting empty when the file does not exist yet.
+    ///
+    /// The file keeps its former name (`devhub.json`) so existing data survives the rename.
     pub fn load(dir: PathBuf) -> AppResult<Self> {
         fs::create_dir_all(&dir)?;
         let path = dir.join("devhub.json");

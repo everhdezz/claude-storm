@@ -30,7 +30,7 @@ pub fn open_project_window(app: AppHandle, store: State<Store>, id: String) -> A
         window.set_focus()?;
     } else {
         let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
-            .title(format!("{} — DevHub", project.name))
+            .title(format!("{} — claude-storm", project.name))
             .inner_size(1360.0, 880.0)
             .min_inner_size(960.0, 640.0)
             .center();
@@ -62,7 +62,7 @@ pub fn show_welcome<R: Runtime>(app: &AppHandle<R>) -> AppResult<()> {
         return Ok(());
     }
     WebviewWindowBuilder::new(app, WELCOME_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Bienvenido a DevHub")
+        .title("Bienvenido a claude-storm")
         .inner_size(720.0, 480.0)
         .min_inner_size(560.0, 380.0)
         .center()
