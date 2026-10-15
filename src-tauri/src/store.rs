@@ -28,6 +28,7 @@ impl Store {
             AppData::default()
         };
         migrate_model_aliases(&mut data);
+        migrate_token_accounts(&mut data);
         for session in &mut data.sessions {
             if matches!(session.status, SessionStatus::Working | SessionStatus::Queued) {
                 session.status = SessionStatus::Interrupted;
@@ -82,6 +83,18 @@ impl Store {
             f(session);
             Ok(session.clone())
         })
+    }
+}
+
+/// Older versions stored subscription tokens; they become isolated profiles that need a login.
+fn migrate_token_accounts(data: &mut AppData) {
+    for account in &mut data.accounts {
+        if account.kind == crate::models::AccountKind::OauthToken {
+            crate::accounts::delete_secret(&account.id);
+            account.kind = crate::models::AccountKind::Profile;
+            account.token_hint = None;
+            account.needs_login = true;
+        }
     }
 }
 

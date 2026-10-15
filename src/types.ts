@@ -156,7 +156,7 @@ export interface RepoDiff {
 
 export type WorktreeCleanup = "keep" | "removeWorktree" | "removeWorktreeAndBranch";
 
-export type AccountKind = "oauthToken" | "apiKey" | "systemLogin";
+export type AccountKind = "profile" | "apiKey" | "systemLogin";
 
 export interface ClaudeAccount {
   id: string;
@@ -165,6 +165,27 @@ export interface ClaudeAccount {
   tokenHint: string | null;
   defaultModel: string | null;
   createdAt: string;
+  loginEmail: string | null;
+  needsLogin: boolean;
+}
+
+export interface LoginProgress {
+  loginId: string;
+  accountId: string;
+  stage: "browser" | "codeInvalid" | "authorized" | "failed" | "timeout";
+  url: string | null;
+  manualUrl: string | null;
+  message: string | null;
+  details: string | null;
+}
+
+export interface ProfileCheck {
+  loggedIn: boolean;
+  authMethod: string | null;
+  email: string | null;
+  subscription: string | null;
+  replyOk: boolean | null;
+  details: string;
 }
 
 export interface CatalogModel {

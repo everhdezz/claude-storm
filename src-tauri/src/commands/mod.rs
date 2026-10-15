@@ -1,5 +1,6 @@
 pub mod git;
 pub mod processes;
+pub mod profiles;
 pub mod projects;
 pub mod repos;
 pub mod sessions;

@@ -171,7 +171,7 @@ impl SessionManager {
         };
         let claude = crate::shell_env::which("claude").ok_or_else(|| AppError::msg("The `claude` CLI was not found in PATH."))?;
         let account = project_account(&store, &session.project_id)?;
-        let (account_vars, cleared_vars) = crate::accounts::account_env(&account)?;
+        let (account_vars, cleared_vars) = crate::accounts::account_env(&account, &store.dir())?;
 
         let runtime = tauri::async_runtime::handle();
         let _context = runtime.inner().enter();
@@ -433,6 +433,8 @@ mod e2e {
                     token_hint: None,
                     default_model: None,
                     created_at: Utc::now(),
+                    login_email: None,
+                    needs_login: false,
                 });
                 d.sessions.push(Session {
                     id: session_id.clone(),

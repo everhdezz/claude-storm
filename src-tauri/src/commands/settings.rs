@@ -78,33 +78,34 @@ pub fn get_settings(store: State<Store>) -> SettingsView {
     view(&store)
 }
 
-/// Adds a Claude account, storing its token or API key in the keychain.
+/// Adds an API-key account (key stored in the keychain) or a "this machine's login" account.
+/// Subscription accounts are created through the profile wizard instead.
 #[tauri::command]
 pub fn create_account(app: AppHandle, store: State<Store>, input: NewAccount) -> AppResult<ClaudeAccount> {
     let alias = input.alias.trim().to_string();
     if alias.is_empty() {
         return Err(AppError::msg("Alias cannot be empty"));
     }
+    let kind = input.kind.unwrap_or(AccountKind::SystemLogin);
     let secret = input.secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    let kind = match (input.kind, secret.as_deref()) {
-        (Some(kind), _) => kind,
-        (None, Some(s)) => accounts::detect_kind(s).ok_or_else(|| AppError::msg("Unrecognized token: pick its type."))?,
-        (None, None) => AccountKind::SystemLogin,
-    };
-    if kind != AccountKind::SystemLogin && secret.is_none() {
-        return Err(AppError::msg("This account type needs a token or API key."));
+    match kind {
+        AccountKind::ApiKey if secret.is_none() => return Err(AppError::msg("An API key is required.")),
+        AccountKind::ApiKey | AccountKind::SystemLogin => {}
+        _ => return Err(AppError::msg("Subscription accounts are added with the login wizard.")),
     }
     let id = new_id();
-    if let Some(secret) = &secret {
+    if let (AccountKind::ApiKey, Some(secret)) = (kind, &secret) {
         accounts::store_secret(&id, secret)?;
     }
     let account = ClaudeAccount {
         id,
         alias,
         kind,
-        token_hint: secret.as_deref().map(accounts::hint),
+        token_hint: secret.as_deref().filter(|_| kind == AccountKind::ApiKey).map(accounts::hint),
         default_model: input.default_model.filter(|m| !m.trim().is_empty()),
         created_at: Utc::now(),
+        login_email: None,
+        needs_login: false,
     };
     let created = account.clone();
     store.write(|d| {
@@ -118,7 +119,8 @@ pub fn create_account(app: AppHandle, store: State<Store>, input: NewAccount) ->
 /// Updates alias, default model or secret of an account.
 #[tauri::command]
 pub fn update_account(app: AppHandle, store: State<Store>, id: String, patch: AccountPatch) -> AppResult<()> {
-    let secret = patch.secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let kind = store.read(|d| d.accounts.iter().find(|a| a.id == id).map(|a| a.kind));
+    let secret = patch.secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).filter(|_| kind == Some(AccountKind::ApiKey));
     if let Some(secret) = &secret {
         accounts::store_secret(&id, secret)?;
     }
@@ -139,9 +141,14 @@ pub fn update_account(app: AppHandle, store: State<Store>, id: String, patch: Ac
     Ok(())
 }
 
-/// Deletes an account and its keychain secret; projects using it are left without account.
+/// Deletes an account; projects using it are left without account. Profiles are logged out by
+/// Claude Code itself and their folder removed; API keys are removed from the keychain.
 #[tauri::command]
-pub fn delete_account(app: AppHandle, store: State<Store>, id: String) -> AppResult<()> {
+pub async fn delete_account(app: AppHandle, store: State<'_, Store>, id: String) -> AppResult<()> {
+    let account = store.read(|d| d.accounts.iter().find(|a| a.id == id).cloned());
+    if let Some(account) = account.filter(|a| matches!(a.kind, AccountKind::Profile | AccountKind::OauthToken)) {
+        crate::commands::profiles::remove_profile(&store, &account).await;
+    }
     store.write(|d| {
         d.accounts.retain(|a| a.id != id);
         for project in &mut d.projects {
@@ -199,7 +206,7 @@ pub async fn refresh_model_catalog(app: AppHandle, store: State<'_, Store>, proj
 /// Probes `/model` and stores the catalog; shared by the command and the daily background refresh.
 pub async fn refresh_catalog<R: tauri::Runtime>(app: &tauri::AppHandle<R>, store: &Store, account: Option<&ClaudeAccount>) -> AppResult<()> {
     let (env, remove) = match account {
-        Some(a) => accounts::account_env(a)?,
+        Some(a) => accounts::account_env(a, &store.dir())?,
         None => (Default::default(), vec!["ANTHROPIC_API_KEY"]),
     };
     let cwd = store.dir().join("claude-probe");

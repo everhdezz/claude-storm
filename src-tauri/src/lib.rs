@@ -3,9 +3,11 @@ mod commands;
 mod detect;
 mod error;
 mod git;
+mod login;
 mod models;
 mod proc_tree;
 mod process_manager;
+mod profiles;
 mod pty;
 mod sessions;
 mod shell_env;
@@ -20,6 +22,7 @@ use commands::windows::{no_windows_left, project_id_from_label, show_welcome};
 use process_manager::ProcessManager;
 use sessions::manager::SessionManager;
 use store::Store;
+use login::LoginManager;
 use terminal::TerminalManager;
 use usage::service::UsageService;
 
@@ -33,6 +36,7 @@ pub fn run() {
         .manage(TerminalManager::default())
         .manage(UsageService::default())
         .manage(SessionManager::default())
+        .manage(LoginManager::default())
         .setup(|app| {
             std::thread::spawn(|| {
                 shell_env::login_env();
@@ -100,6 +104,16 @@ pub fn run() {
             commands::terminals::terminal_close,
             commands::usage::claude_usage,
             commands::usage::claude_usage_cached,
+            commands::usage::account_usage,
+            commands::profiles::create_profile_account,
+            commands::profiles::prepare_profile,
+            commands::profiles::start_profile_login,
+            commands::profiles::submit_login_code,
+            commands::profiles::reopen_login_url,
+            commands::profiles::cancel_profile_login,
+            commands::profiles::verify_profile,
+            commands::profiles::profile_status,
+            commands::profiles::resync_profile,
             commands::sessions::list_sessions,
             commands::sessions::create_session,
             commands::sessions::session_history,
@@ -137,6 +151,7 @@ pub fn run() {
             handle.state::<ProcessManager>().kill_all_blocking();
             handle.state::<TerminalManager>().close_all();
             handle.state::<SessionManager>().kill_all();
+            handle.state::<LoginManager>().cancel_all();
         }
     });
 }

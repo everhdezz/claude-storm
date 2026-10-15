@@ -47,13 +47,18 @@ impl Default for AppSettings {
     }
 }
 
-/// How a Claude account authenticates; secrets live in the OS keychain.
+/// How a Claude account authenticates.
+///
+/// `Profile` accounts are isolated Claude Code config dirs where Claude Code itself performs and
+/// stores the login; DevHub never touches those credentials. `OauthToken` only exists to migrate
+/// data from older versions and is converted to `Profile` on load.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountKind {
-    OauthToken,
+    Profile,
     ApiKey,
     SystemLogin,
+    OauthToken,
 }
 
 /// A Claude account usable by projects (global to the app).
@@ -68,6 +73,10 @@ pub struct ClaudeAccount {
     #[serde(default)]
     pub default_model: Option<String>,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub login_email: Option<String>,
+    #[serde(default)]
+    pub needs_login: bool,
 }
 
 fn default_max_parallel() -> usize {

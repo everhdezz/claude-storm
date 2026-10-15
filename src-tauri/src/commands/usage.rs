@@ -29,16 +29,35 @@ pub async fn claude_usage(
     force: bool,
 ) -> AppResult<Option<UsageSnapshot>> {
     let Some(account) = project_account(&store, &project_id)? else { return Ok(None) };
-    let (env, remove_env) = account_env(&account)?;
-    let target = UsageTarget {
+    Ok(Some(usage.get(&app, usage_target(&app, &store, &account)?, force).await))
+}
+
+/// Usage query target for an account.
+pub fn usage_target(app: &AppHandle, store: &Store, account: &ClaudeAccount) -> AppResult<UsageTarget> {
+    let (env, remove_env) = account_env(account, &store.dir())?;
+    Ok(UsageTarget {
         key: account.id.clone(),
         env,
         remove_env,
-        cwd: probe_cwd(&app),
+        cwd: probe_cwd(app),
         accept_trust: true,
         api_key: account.kind == AccountKind::ApiKey,
-    };
-    Ok(Some(usage.get(&app, target, force).await))
+    })
+}
+
+/// Usage of a specific account (used by the login wizard and account cards).
+#[tauri::command]
+pub async fn account_usage(
+    app: AppHandle,
+    store: State<'_, Store>,
+    usage: State<'_, UsageService>,
+    account_id: String,
+    force: bool,
+) -> AppResult<UsageSnapshot> {
+    let account = store
+        .read(|d| d.accounts.iter().find(|a| a.id == account_id).cloned())
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("account {account_id}")))?;
+    Ok(usage.get(&app, usage_target(&app, &store, &account)?, force).await)
 }
 
 /// Returns the cached usage of the project's account without querying Claude Code.

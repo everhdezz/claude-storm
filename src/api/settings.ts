@@ -1,10 +1,13 @@
-import type { AccountKind, AppSettings, CatalogModel, ClaudeAccount } from "../types";
+import type { AccountKind, AppSettings, CatalogModel, ClaudeAccount, ProfileCheck } from "../types";
+import type { UsageSnapshot } from "./usage";
 import { call } from "./tauri";
 
 export const SETTINGS_CHANGED = "settings-changed";
 
+export const LOGIN_PROGRESS = "login-progress";
+
 export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
-  oauthToken: "Token de suscripción",
+  profile: "Suscripción (perfil aislado)",
   apiKey: "API key",
   systemLogin: "Login de este equipo",
 };
@@ -69,10 +72,52 @@ export function setProjectColor(projectId: string, color: string | null): Promis
   return call("set_project_color", { projectId, color });
 }
 
-/** Guesses the account type from a pasted secret. */
-export function detectKind(secret: string): AccountKind | null {
-  const s = secret.trim();
-  if (s.startsWith("sk-ant-oat")) return "oauthToken";
-  if (s.startsWith("sk-ant-api")) return "apiKey";
-  return null;
+/** Wizard step 1: registers a subscription profile (without login yet). */
+export function createProfileAccount(alias: string, defaultModel: string | null): Promise<ClaudeAccount> {
+  return call("create_profile_account", { input: { alias, defaultModel } });
+}
+
+/** Wizard step 2: creates the profile folder and copies shared config; returns what was copied. */
+export function prepareProfile(accountId: string): Promise<string[]> {
+  return call("prepare_profile", { accountId });
+}
+
+/** Wizard step 3: starts the hidden `claude auth login`; returns the login id. */
+export function startProfileLogin(accountId: string): Promise<string> {
+  return call("start_profile_login", { accountId });
+}
+
+/** Wizard step 4: sends the code shown by the browser. */
+export function submitLoginCode(loginId: string, code: string): Promise<void> {
+  return call("submit_login_code", { loginId, code });
+}
+
+/** Opens the authorization URL again. */
+export function reopenLoginUrl(loginId: string): Promise<void> {
+  return call("reopen_login_url", { loginId });
+}
+
+/** Cancels the login; `discard` deletes a profile created by this wizard. */
+export function cancelProfileLogin(loginId: string | null, accountId: string, discard: boolean): Promise<void> {
+  return call("cancel_profile_login", { loginId, accountId, discard });
+}
+
+/** Wizard step 5: asks Claude Code whether the profile is logged in and answers. */
+export function verifyProfile(accountId: string): Promise<ProfileCheck> {
+  return call("verify_profile", { accountId });
+}
+
+/** Checks whether a profile still has a valid login. */
+export function profileStatus(accountId: string): Promise<boolean> {
+  return call("profile_status", { accountId });
+}
+
+/** Re-copies shared config into a profile. */
+export function resyncProfile(accountId: string): Promise<string[]> {
+  return call("resync_profile", { accountId });
+}
+
+/** Plan usage of a specific account. */
+export function accountUsage(accountId: string, force: boolean): Promise<UsageSnapshot> {
+  return call("account_usage", { accountId, force });
 }
