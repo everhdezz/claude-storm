@@ -12,7 +12,6 @@ import {
   Progress,
   Select,
   Stack,
-  Stepper,
   Text,
   TextInput,
   ThemeIcon,
@@ -37,6 +36,7 @@ import { useTauriEvent } from "../../hooks/useTauriEvent";
 import type { ClaudeAccount, LoginProgress, ProfileCheck } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
 import { timeUntil } from "../status/useClaudeUsage";
+import { WizardSteps } from "./WizardSteps";
 
 type Step = "data" | "prepare" | "authorize" | "verify" | "done";
 const STEP_INDEX: Record<Step, number> = { data: 0, prepare: 1, authorize: 2, verify: 4, done: 5 };
@@ -197,15 +197,13 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
   const active = step === "authorize" && codeOpen ? 3 : STEP_INDEX[step];
 
   return (
-    <Modal opened={opened} onClose={cancel} title={reconnect ? `Reconectar ${reconnect.alias}` : "Agregar cuenta de Claude"} size="lg" centered closeOnClickOutside={false}>
-      <Stepper active={active} size="xs" mb="lg" allowNextStepsSelect={false}>
-        <Stepper.Step label="Datos" />
-        <Stepper.Step label="Perfil" />
-        <Stepper.Step label="Autoriza" />
-        <Stepper.Step label="Código" description="si se pide" />
-        <Stepper.Step label="Verifica" />
-        <Stepper.Step label="Listo" />
-      </Stepper>
+    <Modal opened={opened} onClose={cancel} title={reconnect ? `Reconectar ${reconnect.alias}` : "Agregar cuenta de Claude"} size={560} centered closeOnClickOutside={false}>
+      <WizardSteps
+        labels={["Datos", "Perfil", "Autoriza", "Código", "Verifica", "Listo"]}
+        active={active}
+        optional={[3]}
+        skipped={codeOpen ? [] : [3]}
+      />
 
       {failure ? (
         <Stack>

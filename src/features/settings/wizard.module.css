@@ -1,0 +1,73 @@
+.steps {
+  display: grid;
+  margin: 4px 0 22px;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.step:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  right: calc(50% + 14px);
+  width: calc(100% - 28px);
+  height: 2px;
+  background: var(--dh-island-border);
+}
+
+.step[data-state="done"]:not(:first-child)::before,
+.step[data-state="active"]:not(:first-child)::before,
+.step[data-state="skipped"]:not(:first-child)::before {
+  background: var(--mantine-color-indigo-6);
+}
+
+.dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mantine-color-gray-5);
+  background: var(--mantine-color-dark-6);
+  border: 2px solid var(--mantine-color-dark-4);
+}
+
+.step[data-optional] .dot {
+  border-style: dashed;
+}
+
+.step[data-state="active"] .dot {
+  color: white;
+  border-color: var(--mantine-color-indigo-5);
+  background: var(--mantine-color-indigo-8);
+}
+
+.step[data-state="done"] .dot {
+  color: white;
+  border-color: var(--mantine-color-indigo-6);
+  background: var(--mantine-color-indigo-6);
+}
+
+.step[data-state="skipped"] .dot {
+  color: var(--mantine-color-dark-2);
+  border-color: var(--mantine-color-dark-4);
+}
+
+.label {
+  font-size: 11px;
+  color: var(--mantine-color-gray-5);
+  white-space: nowrap;
+}
+
+.step[data-state="active"] .label {
+  color: var(--mantine-color-gray-1);
+  font-weight: 600;
+}
