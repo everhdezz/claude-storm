@@ -1,15 +1,17 @@
-import type { AccountKind, AppSettings, CatalogModel, ClaudeAccount, ProfileCheck } from "../types";
+import type { LanguagePref } from "../i18n";
+import type { AccountKind, NotificationMode, AppSettings, CatalogModel, ClaudeAccount, ProfileCheck } from "../types";
 import type { UsageSnapshot } from "./usage";
 import { call } from "./tauri";
+import { t } from "../i18n";
 
 export const SETTINGS_CHANGED = "settings-changed";
 
 export const LOGIN_PROGRESS = "login-progress";
 
 export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
-  profile: "Suscripción (perfil aislado)",
+  profile: t("Subscription (isolated profile)"),
   apiKey: "API key",
-  systemLogin: "Login de este equipo",
+  systemLogin: t("This computer's login"),
 };
 
 /** Reads global settings (accounts without secrets, models, limits). */
@@ -120,4 +122,24 @@ export function resyncProfile(accountId: string): Promise<string[]> {
 /** Plan usage of a specific account. */
 export function accountUsage(accountId: string, force: boolean): Promise<UsageSnapshot> {
   return call("account_usage", { accountId, force });
+}
+
+/** Sets the editor used by "Abrir en editor". */
+export function setEditor(editor: string): Promise<void> {
+  return call("set_editor", { editor });
+}
+
+/** Opens a folder in the configured editor. */
+export function openInEditor(path: string): Promise<void> {
+  return call("open_in_editor", { path });
+}
+
+/** Sets when finished sessions trigger a desktop notification. */
+export function setNotifications(mode: NotificationMode): Promise<void> {
+  return call("set_notifications", { mode });
+}
+
+/** Sets the UI language ("auto" follows the operating system); every window reloads. */
+export function setLanguage(language: LanguagePref): Promise<void> {
+  return call("set_language", { language });
 }

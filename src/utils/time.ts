@@ -1,4 +1,5 @@
-const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
+import { getLocale, t } from "../i18n";
+let rtf: Intl.RelativeTimeFormat | null = null;
 
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 31536000],
@@ -9,12 +10,13 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60],
 ];
 
-/** Formats an ISO date as a short relative phrase ("hace 3 horas"). */
+/** Formats an ISO date as a short relative phrase ("3 hours ago") in the active language. */
 export function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "nunca";
+  if (!iso) return t("never");
+  rtf ??= new Intl.RelativeTimeFormat(getLocale(), { numeric: "auto" });
   const seconds = (new Date(iso).getTime() - Date.now()) / 1000;
   for (const [unit, size] of UNITS) {
     if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
   }
-  return "justo ahora";
+  return t("just now");
 }

@@ -1,12 +1,12 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { ChatItem, ProcessInfo, Project, ProjectSummary, Session } from "../types";
+import type { AppSettings, ChatItem, ProcessInfo, Project, ProjectSummary, Session } from "../types";
 
 /** Browser-only fixtures so the UI can be previewed outside Tauri during development. */
 const projects: Project[] = [
   {
     id: "p1",
-    name: "tickesoft",
+    name: "acme",
     accountId: "a1",
     color: "#8a5cc7",
     uiState: null,
@@ -20,8 +20,8 @@ const projects: Project[] = [
     repos: [
       {
         id: "r1",
-        name: "tickesoft-api",
-        path: "/private/var/www/html/tickesoft/tickesoft-api",
+        name: "acme-api",
+        path: "/Users/dev/code/acme/acme-api",
         framework: "laravel",
         packageManager: "composer",
         port: 8000,
@@ -33,8 +33,8 @@ const projects: Project[] = [
       },
       {
         id: "r3",
-        name: "tickesoft-services",
-        path: "/private/var/www/html/tickesoft/tickesoft-services",
+        name: "acme-services",
+        path: "/Users/dev/code/acme/acme-services",
         framework: "laravel",
         packageManager: "composer",
         port: 8001,
@@ -43,7 +43,7 @@ const projects: Project[] = [
       {
         id: "r4",
         name: "wallet-app",
-        path: "/private/var/www/html/tickesoft/wallet-app",
+        path: "/Users/dev/code/acme/wallet-app",
         framework: "expo",
         packageManager: "npm",
         port: 8081,
@@ -51,8 +51,8 @@ const projects: Project[] = [
       },
       {
         id: "r2",
-        name: "tickesoft-web",
-        path: "/private/var/www/html/tickesoft/tickesoft-web",
+        name: "acme-web",
+        path: "/Users/dev/code/acme/acme-web",
         framework: "vite",
         packageManager: "pnpm",
         port: 5173,
@@ -63,7 +63,7 @@ const projects: Project[] = [
       },
     ],
   },
-  { id: "p2", name: "payser-api", accountId: null, color: null, layout: [], uiState: null, createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
+  { id: "p2", name: "billing-api", accountId: null, color: null, layout: [], uiState: null, createdAt: "2026-10-01T10:00:00Z", lastOpenedAt: null, repos: [] },
 ];
 
 /** Builds a fixture session. */
@@ -71,7 +71,7 @@ function fixtureSession(id: string, patch: Partial<Session>): Session {
   return {
     id,
     projectId: "p1",
-    title: "Sesión",
+    title: "Session",
     description: null,
     profileId: null,
     model: null,
@@ -90,35 +90,75 @@ function fixtureSession(id: string, patch: Partial<Session>): Session {
     lastError: null,
     baseBranches: {},
     lastModel: "claude-opus-5-5",
+    pending: [],
+    approvals: [],
+    allowedTools: [],
     ...patch,
   };
 }
 
 const sessions: Session[] = [
-  fixtureSession("s1", { title: "Arreglar validación del checkout", status: "working", model: "opus", summary: "Revisando CheckoutForm.tsx…" }),
+  fixtureSession("s1", {
+    title: "Fix checkout email validation",
+    status: "working",
+    model: "opus",
+    summary: "Reviewing CheckoutForm.tsx…",
+    approvals: [
+      { id: "ap1", toolName: "WebFetch", input: { url: "https://api.example.com/swagger/v1/swagger.json", prompt: "List the routes" }, at: new Date().toISOString() },
+      {
+        id: "ap2",
+        toolName: "AskUserQuestion",
+        input: {
+          questions: [
+            {
+              question: "Where should the 2FA secret live?",
+              header: "2FA",
+              multiSelect: false,
+              options: [
+                { label: "Users table", description: "A new encrypted column" },
+                { label: "Separate table", description: "user_two_factor, with history" },
+              ],
+            },
+          ],
+        },
+        at: new Date().toISOString(),
+      },
+    ],
+    pending: [
+      { id: "q1", text: "Also check the phone has 10 digits", prompt: "", model: null, attachments: [], at: new Date().toISOString() },
+      { id: "q2", text: "and add that case to the test", prompt: "", model: null, attachments: ["screenshot.png"], at: new Date().toISOString() },
+    ],
+  }),
   fixtureSession("s2", {
-    title: "Endpoint de reportes en la API",
+    title: "Reports endpoint in the API",
     status: "done",
     mode: "isolated",
-    branch: "claude-storm/endpoint-de-reportes-a1b2c3",
+    branch: "reports-endpoint-a1b2c3",
     repoIds: ["r1"],
-    summary: "Agregué ReportController con tests.",
+    summary: "Added ReportController with tests.",
     filesTouched: ["a", "b", "c"],
     lastActivityAt: new Date(Date.now() - 40 * 60_000).toISOString(),
   }),
-  fixtureSession("s3", { title: "¿Cómo funciona el login?", status: "waiting", model: "haiku", summary: "El login usa Sanctum con…" }),
+  fixtureSession("s3", { title: "How does login work?", status: "waiting", model: "haiku", summary: "Login uses Sanctum with…" }),
 ];
 
 const history: ChatItem[] = [
-  { kind: "prompt", text: "La validación del checkout deja pasar emails sin dominio. Arréglalo y agrega un test.", model: "opus", at: new Date(Date.now() - 5 * 60_000).toISOString() },
-  { kind: "text", text: "Voy a revisar el formulario del checkout y su esquema de validación." },
+  { kind: "prompt", text: "Checkout validation lets emails without a domain through. Fix it and add a test.", model: "opus", at: new Date(Date.now() - 5 * 60_000).toISOString() },
+  { kind: "prompt", text: 'the API returns this payload, does it include the author? "[{\\"orderId\\":\\"525c320c-e64a-4f42-93b6-76e029fa1556\\",\\"items\\":[{\\"sku\\":\\"BK-2291-BLUE-XL\\",\\"updatedAt\\":\\"2026-09-17T17:09:10.27\\",\\"updatedBy\\":\\"f05a2e79-ad3d-4bee-95a9-eefab5ca5808\\"}]}]"', model: "opus", at: new Date(Date.now() - 4 * 60_000).toISOString() },
+  { kind: "text", text: "I'll look at the checkout form and its validation schema." },
+  { kind: "toolUse", id: "k1", name: "Skill", input: { skill: "frontend-design" } },
+  { kind: "toolResult", toolUseId: "k1", content: "Skill loaded", isError: false },
+  { kind: "toolUse", id: "k2", name: "mcp__claude_ai_Atlassian_MCP__getJiraIssue", input: { issueIdOrKey: "TS-142" } },
+  { kind: "toolResult", toolUseId: "k2", content: "{\"key\":\"TS-142\"}", isError: false },
+  { kind: "toolUse", id: "k3", name: "Agent", input: { subagent_type: "Explore", description: "Find email validations" } },
+  { kind: "toolResult", toolUseId: "k3", content: "Found 2 schemas", isError: false },
   { kind: "toolUse", id: "t1", name: "Grep", input: { pattern: "email", path: "src/checkout" } },
   { kind: "toolResult", toolUseId: "t1", content: "src/checkout/CheckoutForm.tsx:42:  email: z.string().min(3),", isError: false },
-  { kind: "toolUse", id: "t2", name: "Edit", input: { file_path: "/private/var/www/html/tickesoft/tickesoft-web/src/checkout/CheckoutForm.tsx", old_string: "  email: z.string().min(3),", new_string: "  email: z.string().email(),\n  emailConfirm: z.string().email()," } },
+  { kind: "toolUse", id: "t2", name: "Edit", input: { file_path: "/Users/dev/code/acme/acme-web/src/checkout/CheckoutForm.tsx", old_string: "  email: z.string().min(3),", new_string: "  email: z.string().email(),\n  emailConfirm: z.string().email()," } },
   { kind: "toolResult", toolUseId: "t2", content: "ok", isError: false },
   { kind: "toolUse", id: "t3", name: "Bash", input: { command: "pnpm vitest run checkout" } },
   { kind: "toolResult", toolUseId: "t3", content: " ✓ checkout.test.ts (4 tests) 212ms\n Test Files  1 passed (1)", isError: false },
-  { kind: "text", text: "Listo. Cambié la regla a `z.string().email()` y agregué un test:\n\n- rechaza `juan@`\n- acepta `juan@mail.com`" },
+  { kind: "text", text: "Done. I changed the rule to `z.string().email()` and added a test:\n\n- rejects `jane@`\n- accepts `jane@mail.com`" },
   { kind: "result", ok: true, text: "", costUsd: 0.0412, durationMs: 48200, turns: 6 },
 ];
 
@@ -128,7 +168,7 @@ function summarize(p: Project): ProjectSummary {
     id: p.id,
     name: p.name,
     repoCount: p.repos.length,
-    rootHint: p.repos.length ? "/private/var/www/html/tickesoft" : null,
+    rootHint: p.repos.length ? "/Users/dev/code/acme" : null,
     createdAt: p.createdAt,
     lastOpenedAt: p.lastOpenedAt,
     isOpen: p.id === "p1",
@@ -136,13 +176,16 @@ function summarize(p: Project): ProjectSummary {
 }
 
 /** Simulates a dev server that boots, logs a few lines and becomes ready. */
-function simulateProcess(projectId: string, repoId: string, commandId: string): ProcessInfo {
+function simulateProcess(projectId: string, repoId: string, commandId: string, sessionId: string | null = null): ProcessInfo {
   const repo = projects.flatMap((p) => p.repos).find((r) => r.id === repoId)!;
   const command = repo.commands.find((c) => c.id === commandId)!;
   const info: ProcessInfo = {
     id: `${repoId}:${commandId}`,
     projectId,
     repoId,
+    cwd: repo.path,
+    sessionId,
+    startedBy: null,
     commandId,
     label: command.label,
     command: command.command,
@@ -183,9 +226,21 @@ export function installMocks(): void {
           return found && saved ? { ...found, uiState: JSON.parse(saved) } : found;
         }
         case "git_status":
-          return { branch: "main", ahead: 1, behind: 0, staged: 0, modified: 3, untracked: 1, conflicted: 0 };
+          return { branch: "main", ahead: 1, behind: 0, staged: 0, modified: 3, untracked: 1, conflicted: 0, insertions: 128, deletions: 41 };
+        case "git_branches":
+          return {
+            current: "main",
+            recent: ["feat/login"],
+            branches: [
+              { name: "main", remote: false, current: true, upstream: "origin/main", ahead: 1, behind: 0, worktree: null, committedAt: 1760400000 },
+              { name: "feat/login", remote: false, current: false, upstream: "origin/feat/login", ahead: 0, behind: 2, worktree: null, committedAt: 1760300000 },
+              { name: "fix-header-a1b2c3", remote: false, current: false, upstream: null, ahead: 0, behind: 0, worktree: "/tmp/wt/web", committedAt: 1760350000 },
+              { name: "origin/main", remote: true, current: false, upstream: null, ahead: 0, behind: 0, worktree: null, committedAt: 1760400000 },
+              { name: "origin/feat/login", remote: true, current: false, upstream: null, ahead: 0, behind: 0, worktree: null, committedAt: 1760300000 },
+            ],
+          };
         case "start_command":
-          return simulateProcess(a.projectId!, a.repoId!, a.commandId!);
+          return simulateProcess(a.projectId!, a.repoId!, a.commandId!, a.sessionId ?? null);
         case "check_port":
           return false;
         case "claude_usage":
@@ -202,10 +257,14 @@ export function installMocks(): void {
               { label: "Current week (Fable)", percent: 0, resetsText: "Oct 17 at 4am (America/Chihuahua)", resetsAt: new Date(Date.now() + 63 * 3600_000).toISOString() },
             ],
           };
+        case "set_language":
+          sessionStorage.setItem("mock-language", String(a.language));
+          emit("settings-changed", { language: a.language });
+          return null;
         case "get_settings":
           return {
             accounts: [
-              { id: "a1", alias: "Trabajo", kind: "oauthToken", tokenHint: "…X9aQ", defaultModel: "claude-opus-5-5", createdAt: "2026-10-14T10:00:00Z" },
+              { id: "a1", alias: "Work", kind: "oauthToken", tokenHint: "…X9aQ", defaultModel: "claude-opus-5-5", createdAt: "2026-10-14T10:00:00Z" },
               { id: "a2", alias: "Personal", kind: "systemLogin", tokenHint: null, defaultModel: null, createdAt: "2026-10-14T10:00:00Z" },
             ],
             catalog: [
@@ -218,6 +277,9 @@ export function installMocks(): void {
             catalogUpdatedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
             defaultModel: null,
             maxParallelSessions: 3,
+            editor: "WebStorm",
+            notifications: "background",
+            language: (sessionStorage.getItem("mock-language") ?? "auto") as AppSettings["language"],
           };
         case "save_project_ui_state": {
           const target = projects.find((p) => p.id === a.id);
@@ -237,6 +299,10 @@ export function installMocks(): void {
           return history;
         case "terminal_open":
           return { id: `term-${Math.random()}`, projectId: a.projectId, cwd: a.cwd, title: String(a.cwd).split("/").pop() };
+        case "session_remove_pending":
+          return sessions.flatMap((s) => s.pending).find((m) => m.id === a.messageId) ?? null;
+        case "save_pasted_file":
+          return `/tmp/claude-storm/pasted/captura-${Date.now()}.png`;
         case "list_processes":
         case "process_logs":
           return [];

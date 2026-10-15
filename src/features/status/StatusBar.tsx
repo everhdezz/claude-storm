@@ -17,8 +17,10 @@ import type { UsageBar } from "../../api/usage";
 import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
 import { AccountLink } from "../settings/AccountLink";
+import { APP_VERSION, channelLabel } from "../../version";
 import { timeUntil, useClaudeUsage } from "./useClaudeUsage";
 import classes from "../../components/ide/ide.module.css";
+import { t } from "../../i18n";
 
 interface StatusBarProps {
   projectId: string;
@@ -46,16 +48,16 @@ export function StatusBar({ projectId, right }: StatusBarProps) {
                 <Group gap={8} wrap="nowrap">
                   <IconSparkles size={13} color="var(--mantine-color-orange-4)" />
                   {!snapshot && loading && <Loader size={10} />}
-                  {snapshot?.billing === "api" && <Text size="xs">API key · cobro por token</Text>}
+                  {snapshot?.billing === "api" && <Text size="xs">{t("API key · billed per token")}</Text>}
                   {snapshot && snapshot.billing === "subscription" && snapshot.bars.length === 0 && (
                     <Text size="xs" c="yellow.5">
-                      sin datos de uso
+                      {t("no usage data")}
                     </Text>
                   )}
-                  {session && <InlineBar name="Sesión" bar={session} />}
-                  {week && <InlineBar name="Semana" bar={week} />}
+                  {session && <InlineBar name={t("Session")} bar={session} />}
+                  {week && <InlineBar name={t("Week")} bar={week} />}
                   {stale && (
-                    <Tooltip label="Datos con más de 60 minutos">
+                    <Tooltip label={t("Data older than 60 minutes")}>
                       <IconAlertTriangle size={12} color="var(--mantine-color-yellow-5)" />
                     </Tooltip>
                   )}
@@ -71,6 +73,14 @@ export function StatusBar({ projectId, right }: StatusBarProps) {
       </Group>
       <Group gap="md" wrap="nowrap">
         {right}
+        <Group gap={6} wrap="nowrap">
+          <Text size="xs" c="dimmed">
+            v{APP_VERSION}
+          </Text>
+          <Badge color="orange" variant="filled" size="xs" radius="sm">
+            {channelLabel()}
+          </Badge>
+        </Group>
       </Group>
     </footer>
   );
@@ -104,16 +114,16 @@ function UsageDetails({ usage }: { usage: ReturnType<typeof useClaudeUsage> }) {
     <Stack gap="sm">
       <Group justify="space-between">
         <Text fw={600} size="sm">
-          Uso del plan de Claude
+          {t("Claude plan usage")}
         </Text>
         <Group gap={6}>
           {stale && (
             <Badge color="yellow" variant="light" size="sm">
-              desactualizado
+              {t("outdated")}
             </Badge>
           )}
-          <Tooltip label="Consultar ahora (/usage)">
-            <ActionIcon variant="subtle" size="sm" loading={loading} onClick={() => refresh(true)} aria-label="Refrescar uso">
+          <Tooltip label={t("Check now (/usage)")}>
+            <ActionIcon variant="subtle" size="sm" loading={loading} onClick={() => refresh(true)} aria-label={t("Refresh usage")}>
               <IconRefresh size={14} />
             </ActionIcon>
           </Tooltip>
@@ -129,7 +139,7 @@ function UsageDetails({ usage }: { usage: ReturnType<typeof useClaudeUsage> }) {
           </Group>
           <Progress value={bar.percent} size="sm" color={barColor(bar.percent)} />
           <Text size="xs" c="dimmed" mt={4}>
-            {bar.resetsText ? `Reinicia ${bar.resetsText}` : "Sin hora de reinicio"}
+            {bar.resetsText ? t("Resets {when}", { when: bar.resetsText }) : t("No reset time")}
             {bar.resetsAt && ` · en ${timeUntil(bar.resetsAt)}`}
           </Text>
         </div>
@@ -147,8 +157,8 @@ function UsageDetails({ usage }: { usage: ReturnType<typeof useClaudeUsage> }) {
         </ScrollArea.Autosize>
       )}
       <Text size="xs" c="dimmed">
-        {snapshot ? `Actualizado ${relativeTime(snapshot.fetchedAt)}` : "Consultando /usage…"} · se refresca cada 10 min. Los
-        datos vienen de la pantalla /usage de Claude Code; si su formato cambia, se muestra el texto crudo.
+        {snapshot ? t("Updated {when}", { when: relativeTime(snapshot.fetchedAt) }) : t("Checking /usage…")} ·{" "}
+        {t("refreshes every 10 min. The data comes from Claude Code's /usage screen; if its format changes, the raw text is shown.")}
       </Text>
     </Stack>
   );

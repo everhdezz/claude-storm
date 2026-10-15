@@ -5,14 +5,15 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { ModelsSettings } from "./ModelsSettings";
 import classes from "./settings.module.css";
+import { t } from "../../i18n";
 
 export type SettingsSection = "accounts" | "models" | "appearance" | "general";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof IconUsers }[] = [
-  { id: "accounts", label: "Cuentas de Claude", icon: IconUsers },
-  { id: "models", label: "Modelos", icon: IconCpu },
-  { id: "appearance", label: "Apariencia", icon: IconBrush },
-  { id: "general", label: "General", icon: IconSettings2 },
+  { id: "accounts", label: t("Claude accounts"), icon: IconUsers },
+  { id: "models", label: t("Models"), icon: IconCpu },
+  { id: "appearance", label: t("Appearance"), icon: IconBrush },
+  { id: "general", label: t("General"), icon: IconSettings2 },
 ];
 
 interface SettingsModalProps {
@@ -24,7 +25,7 @@ interface SettingsModalProps {
 /** JetBrains-like settings dialog: section list on the left, form on the right. */
 export function SettingsModal({ section, onSection, onClose }: SettingsModalProps) {
   return (
-    <Modal opened={section !== null} onClose={onClose} title="Settings" size={880} centered padding={0} classNames={{ header: classes.header }}>
+    <Modal opened={section !== null} onClose={onClose} title={t("Settings")} size={880} centered padding={0} classNames={{ header: classes.header }}>
       <div className={classes.layout}>
         <nav className={classes.nav}>
           {SECTIONS.map((s) => (
@@ -39,7 +40,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
             />
           ))}
           <Text size="xs" c="dimmed" mt="auto" px="xs">
-            Cuentas, modelos y límites son globales para todos los proyectos.
+            {t("Accounts, models and limits are global to every project.")}
           </Text>
         </nav>
         <div className={classes.content}>

@@ -10,6 +10,7 @@ export interface ProjectUiState {
   terminals?: { tabs: { cwd: string; title: string }[]; active: number };
   expandedRepos?: string[];
   showArchived?: boolean;
+  runTarget?: string | null;
 }
 
 const DEBOUNCE_MS = 400;

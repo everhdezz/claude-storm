@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::error::{AppError, AppResult};
-use crate::models::{new_id, Project, Session, SessionMode, SessionStatus};
+use crate::i18n::tr;
+use crate::models::{new_id, PendingMessage, Project, Session, SessionMode, SessionStatus};
 use crate::sessions::history::History;
 use crate::sessions::manager::{emit_session, working_dir, SessionManager};
 use crate::sessions::stream::ChatItem;
-use crate::sessions::worktree;
+use crate::sessions::{prepare, worktree};
 use crate::store::Store;
 
 /// Fields of the "new session" form.
@@ -51,6 +52,16 @@ pub struct RepoDiff {
     pub repo_name: String,
     pub base: String,
     pub diff: String,
+}
+
+/// Folder a session works in for one repo.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionFolder {
+    pub repo_id: String,
+    pub repo_name: String,
+    pub path: String,
+    pub exists: bool,
 }
 
 /// Repos of the project included in a session, with their working folders.
@@ -110,13 +121,16 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         last_error: None,
         base_branches: Default::default(),
         last_model: None,
+        pending: Vec::new(),
+        approvals: Vec::new(),
+        allowed_tools: Vec::new(),
     };
 
     if session.mode == SessionMode::Isolated {
-        let branch = format!("claude-storm/{}-{}", worktree::slugify(&title), &id[..6]);
+        let branch = format!("{}-{}", worktree::slugify(&title), &id[..6]);
         let repos = session_repos(&store, &session, &project);
         let branch_for_task = branch.clone();
-        let bases = tauri::async_runtime::spawn_blocking(move || -> AppResult<Vec<(String, String)>> {
+        let (bases, notes) = tauri::async_runtime::spawn_blocking(move || -> AppResult<(Vec<(String, String)>, Vec<String>)> {
             let mut created: Vec<(PathBuf, PathBuf)> = Vec::new();
             let mut bases = Vec::new();
             for (repo_id, _, repo_path, wt) in &repos {
@@ -137,10 +151,20 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
                     }
                 }
             }
-            Ok(bases)
+            // Every worktree exists now; make each one runnable (env files, cloned dependencies).
+            let notes = created
+                .iter()
+                .zip(&repos)
+                .filter_map(|((repo, wt), (_, name, _, _))| prepare::prepare(repo, wt).summary(name))
+                .collect();
+            Ok((bases, notes))
         })
         .await
         .map_err(|e| AppError::msg(e.to_string()))??;
+        if !notes.is_empty() {
+            let text = format!("{}\n{}", tr("Worktree ready.", "Worktree preparado."), notes.join("\n"));
+            let _ = History::new(&store.dir()).append(&id, &[ChatItem::Notice { level: "info".into(), text }]);
+        }
         session.branch = Some(branch);
         session.base_branches = bases.into_iter().collect();
     }
@@ -225,12 +249,15 @@ pub fn duplicate_session(app: AppHandle, store: State<Store>, session_id: String
         archived: false,
         last_error: None,
         last_model: None,
+        pending: Vec::new(),
+        approvals: Vec::new(),
+        allowed_tools: Vec::new(),
         ..source.clone()
     };
     History::new(&store.dir()).copy(&source.id, &copy.id)?;
     History::new(&store.dir()).append(
         &copy.id,
-        &[ChatItem::Notice { level: "info".into(), text: "Copia: el historial es visual; Claude empieza una conversación nueva.".into() }],
+        &[ChatItem::Notice { level: "info".into(), text: tr("Copy: the history is only visual; Claude starts a new conversation.", "Copia: el historial es visual; Claude empieza una conversación nueva.") }],
     )?;
     let created = copy.clone();
     store.write(|d| {
@@ -311,6 +338,94 @@ async fn cleanup_worktrees(store: &Store, session_id: &str, cleanup: WorktreeCle
     .map_err(|e| AppError::msg(e.to_string()))?
 }
 
+/// Sends the session's queued messages now, interrupting Claude's current turn if needed.
+#[tauri::command]
+pub async fn session_send_now(app: AppHandle, manager: State<'_, SessionManager>, session_id: String) -> AppResult<()> {
+    manager.send_now(&app, &session_id).await
+}
+
+/// Removes a queued message; returns it so the UI can put it back in the composer.
+#[tauri::command]
+pub fn session_remove_pending(
+    app: AppHandle,
+    manager: State<SessionManager>,
+    session_id: String,
+    message_id: String,
+) -> AppResult<Option<PendingMessage>> {
+    manager.remove_pending(&app, &session_id, &message_id)
+}
+
+/// Answers a permission prompt or AskUserQuestion that Claude is waiting on.
+#[tauri::command]
+pub fn session_answer_approval(
+    app: AppHandle,
+    store: State<Store>,
+    mcp: State<crate::mcp::McpState>,
+    session_id: String,
+    approval_id: String,
+    decision: crate::mcp::tools::ApprovalDecision,
+) -> AppResult<()> {
+    if mcp.answer(&approval_id, decision) {
+        return Ok(());
+    }
+    // Nothing is waiting (Claude already stopped): just drop the stale card.
+    let updated = store.update_session(&session_id, |s| s.approvals.retain(|a| a.id != approval_id))?;
+    emit_session(&app, &updated);
+    Err(AppError::msg("Claude is no longer waiting for this answer."))
+}
+
+/// Saves a file pasted from the clipboard (raw bytes; name in the `x-file-name` header) and
+/// returns its path, so it can be attached like a picked or dropped file.
+#[tauri::command]
+pub fn save_pasted_file(store: State<Store>, request: tauri::ipc::Request) -> AppResult<String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(AppError::msg("Expected the file's raw bytes"));
+    };
+    let raw_name = request.headers().get("x-file-name").and_then(|v| v.to_str().ok()).unwrap_or("pegado");
+    let name = pasted_file_name(&percent_decode(raw_name));
+    let dir = store.dir().join("pasted").join(new_id());
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(name);
+    std::fs::write(&path, bytes)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// Keeps only the file name part, without separators, so it cannot escape the target folder.
+fn pasted_file_name(raw: &str) -> String {
+    let name = raw.rsplit(['/', '\\']).next().unwrap_or_default().trim().trim_start_matches('.');
+    if name.is_empty() { "pegado".into() } else { name.chars().take(120).collect() }
+}
+
+/// Decodes `encodeURIComponent` output (header values must be ASCII).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+/// Working folders of a session: its worktrees when isolated, the repos themselves otherwise.
+#[tauri::command]
+pub fn session_folders(store: State<Store>, session_id: String) -> AppResult<Vec<SessionFolder>> {
+    let session = store.session(&session_id)?;
+    let project = store.project(&session.project_id)?;
+    Ok(session_repos(&store, &session, &project)
+        .into_iter()
+        .map(|(repo_id, repo_name, _, wd)| SessionFolder { repo_id, repo_name, exists: wd.exists(), path: wd.to_string_lossy().to_string() })
+        .collect())
+}
+
 /// Diff of every repo of an isolated session against its base branch.
 #[tauri::command]
 pub async fn session_diff(store: State<'_, Store>, session_id: String) -> AppResult<Vec<RepoDiff>> {
@@ -337,7 +452,7 @@ pub async fn session_diff(store: State<'_, Store>, session_id: String) -> AppRes
 #[tauri::command]
 pub async fn session_commit(store: State<'_, Store>, session_id: String, message: String) -> AppResult<Vec<String>> {
     let (repos, _, _) = isolated_parts(&store, &session_id)?;
-    let message = if message.trim().is_empty() { "claude-storm session changes".to_string() } else { message };
+    let message = if message.trim().is_empty() { "ClaudeStorm session changes".to_string() } else { message };
     tauri::async_runtime::spawn_blocking(move || {
         let mut committed = Vec::new();
         for (_, name, _, wt) in repos {
@@ -398,4 +513,19 @@ fn isolated_parts(
 /// Porcelain status of a folder.
 fn run_porcelain(dir: &Path) -> AppResult<String> {
     Ok(crate::git::run_git(dir, &["status", "--porcelain"])?.trim().to_string())
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    #[test]
+    fn sanitizes_pasted_names() {
+        assert_eq!(pasted_file_name(&percent_decode("Captura%20de%20pantalla.png")), "Captura de pantalla.png");
+        assert_eq!(pasted_file_name("../../etc/passwd"), "passwd");
+        assert_eq!(pasted_file_name("..\\x.txt"), "x.txt");
+        assert_eq!(pasted_file_name(".."), "pegado");
+        assert_eq!(percent_decode("%C3%B1and%C3%BA"), "ñandú");
+        assert_eq!(percent_decode("a%2"), "a%2");
+    }
 }

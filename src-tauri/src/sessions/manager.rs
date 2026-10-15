@@ -9,7 +9,8 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 use crate::commands::windows::project_window_label;
 use crate::error::{AppError, AppResult};
-use crate::models::{Session, SessionStatus};
+use crate::i18n::tr;
+use crate::models::{PendingMessage, Session, SessionStatus};
 use crate::proc_tree::{self, ProcessTree};
 use crate::sessions::history::History;
 use crate::sessions::stream::{edited_file, parse_line, ChatItem};
@@ -48,6 +49,8 @@ struct DeltaEvent<'a> {
 pub struct SessionManager {
     running: Mutex<HashMap<String, Arc<ProcessTree>>>,
     stopping: Mutex<HashSet<String>>,
+    /// Sessions interrupted by "Enviar ya": their pending messages go out as soon as they stop.
+    send_now: Mutex<HashSet<String>>,
     queue: Mutex<VecDeque<Queued>>,
 }
 
@@ -73,22 +76,43 @@ impl SessionManager {
     ) -> AppResult<Session> {
         let store = app.state::<Store>();
         let session = store.session(session_id)?;
-        if self.is_running(session_id) || session.status == SessionStatus::Queued {
-            return Err(AppError::msg("This session is already working; wait or stop it first."));
-        }
         let copied = copy_attachments(&attachments_dir(&store.dir(), session_id), &attachments)?;
         let names: Vec<String> = copied.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect();
-        let user_prompt = prompt.clone();
-        let prompt = with_attachment_list(prompt, &copied);
-        let account = project_account(&store, &session.project_id)?;
-        let item = ChatItem::Prompt {
-            text: user_prompt,
+        let message = PendingMessage {
+            id: crate::models::new_id(),
+            text: prompt.clone(),
+            prompt: with_attachment_list(prompt, &copied),
+            model,
             attachments: names,
-            model: model.clone().or(session.model.clone()).or(account.default_model.clone()),
-            account: Some(account.alias.clone()),
             at: Utc::now(),
         };
-        self.record(app, &session, vec![item]);
+        // Busy: queue it like Claude Code does; it goes out when the current turn ends.
+        if self.is_running(session_id) || session.status == SessionStatus::Queued {
+            let updated = store.update_session(session_id, |s| s.pending.push(message))?;
+            emit_session(app, &updated);
+            return Ok(updated);
+        }
+        self.dispatch(app, &session, vec![message])
+    }
+
+    /// Records the messages in the chat and runs them as one prompt (or queues it for a free slot).
+    fn dispatch<R: Runtime>(&self, app: &AppHandle<R>, session: &Session, messages: Vec<PendingMessage>) -> AppResult<Session> {
+        let store = app.state::<Store>();
+        let session_id = session.id.as_str();
+        let account = project_account(&store, &session.project_id)?;
+        let items = messages
+            .iter()
+            .map(|m| ChatItem::Prompt {
+                text: m.text.clone(),
+                attachments: m.attachments.clone(),
+                model: m.model.clone().or(session.model.clone()).or(account.default_model.clone()),
+                account: Some(account.alias.clone()),
+                at: Utc::now(),
+            })
+            .collect();
+        self.record(app, session, items);
+        let model = messages.iter().rev().find_map(|m| m.model.clone());
+        let prompt = messages.iter().map(|m| m.prompt.as_str()).collect::<Vec<_>>().join("\n\n");
 
         let limit = store.read(|d| d.settings.max_parallel_sessions.max(1));
         if self.running.lock().unwrap().len() >= limit {
@@ -101,6 +125,68 @@ impl SessionManager {
             return Ok(updated);
         }
         self.start(app, session_id, prompt, model)
+    }
+
+    /// Sends the queued messages now: interrupts the current turn first if Claude is working.
+    pub async fn send_now<R: Runtime>(&self, app: &AppHandle<R>, session_id: &str) -> AppResult<()> {
+        let store = app.state::<Store>();
+        let session = store.session(session_id)?;
+        if session.pending.is_empty() {
+            return Ok(());
+        }
+        if self.is_running(session_id) {
+            self.send_now.lock().unwrap().insert(session_id.to_string());
+            return self.stop(app, session_id).await;
+        }
+        // Waiting for a parallel slot: fold the messages into the prompt that is already in line.
+        if session.status == SessionStatus::Queued {
+            let mut taken = Vec::new();
+            let session = store.update_session(session_id, |s| taken = std::mem::take(&mut s.pending))?;
+            let account = project_account(&store, &session.project_id)?;
+            let items = taken
+                .iter()
+                .map(|m| ChatItem::Prompt {
+                    text: m.text.clone(),
+                    attachments: m.attachments.clone(),
+                    model: m.model.clone().or(session.model.clone()).or(account.default_model.clone()),
+                    account: Some(account.alias.clone()),
+                    at: Utc::now(),
+                })
+                .collect();
+            if let Some(entry) = self.queue.lock().unwrap().iter_mut().find(|q| q.session_id == session_id) {
+                for m in &taken {
+                    entry.prompt.push_str("\n\n");
+                    entry.prompt.push_str(&m.prompt);
+                }
+            }
+            self.record(app, &session, items);
+            emit_session(app, &session);
+            return Ok(());
+        }
+        self.flush_pending(app, session_id).map(|_| ())
+    }
+
+    /// Takes every pending message of a session and dispatches them together.
+    fn flush_pending<R: Runtime>(&self, app: &AppHandle<R>, session_id: &str) -> AppResult<Option<Session>> {
+        let store = app.state::<Store>();
+        let mut taken = Vec::new();
+        let session = store.update_session(session_id, |s| taken = std::mem::take(&mut s.pending))?;
+        if taken.is_empty() {
+            return Ok(None);
+        }
+        self.dispatch(app, &session, taken).map(Some)
+    }
+
+    /// Removes one queued message (to discard it or to edit it in the composer).
+    pub fn remove_pending<R: Runtime>(&self, app: &AppHandle<R>, session_id: &str, message_id: &str) -> AppResult<Option<PendingMessage>> {
+        let mut removed = None;
+        let updated = app.state::<Store>().update_session(session_id, |s| {
+            if let Some(pos) = s.pending.iter().position(|m| m.id == message_id) {
+                removed = Some(s.pending.remove(pos));
+            }
+        })?;
+        emit_session(app, &updated);
+        Ok(removed)
     }
 
     /// Stops a working session (or removes it from the queue).
@@ -207,6 +293,14 @@ impl SessionManager {
         for dir in dirs.iter().skip(1) {
             cmd.arg("--add-dir").arg(dir);
         }
+        // Gives Claude the ClaudeStorm MCP tools (services, logs, worktree info), pre-approved.
+        if let Some(config) = app.try_state::<crate::mcp::McpState>().and_then(|m| m.config_for(session_id)) {
+            cmd.arg("--mcp-config").arg(config);
+            cmd.args(["--allowedTools", &format!("mcp__{}", crate::mcp::SERVER_NAME)]);
+            // Permission prompts and AskUserQuestion go to the user through the ClaudeStorm UI.
+            cmd.args(["--permission-prompt-tool", &format!("mcp__{}__{}", crate::mcp::SERVER_NAME, crate::mcp::tools::APPROVAL_TOOL)]);
+            cmd.env("MCP_TOOL_TIMEOUT", "3600000");
+        }
         let attachments = attachments_dir(&store.dir(), session_id);
         if attachments.is_dir() {
             cmd.arg("--add-dir").arg(&attachments);
@@ -266,15 +360,29 @@ impl SessionManager {
     fn finish<R: Runtime>(&self, app: &AppHandle<R>, id: &str, turn: TurnState, code: Option<i32>, stopped: bool, stderr: String) {
         let store = app.state::<Store>();
         let Ok(session) = store.session(id) else { return };
+        // The Claude process is gone, so nobody waits for its prompts anymore.
+        if !session.approvals.is_empty() {
+            let ids: Vec<String> = session.approvals.iter().map(|a| a.id.clone()).collect();
+            if let Some(mcp) = app.try_state::<crate::mcp::McpState>() {
+                mcp.cancel(&ids);
+            }
+            let _ = store.update_session(id, |s| s.approvals.clear());
+        }
         let failed = !stopped && (code != Some(0) || turn.result_ok == Some(false));
+        let send_now = self.send_now.lock().unwrap().remove(id);
+        // Queued messages follow a normal finish or an "Enviar ya" interruption; after an error or
+        // a plain stop they stay queued so the user decides.
+        let flush = !session.pending.is_empty() && ((!stopped && !failed) || (stopped && send_now));
         let mut notices = Vec::new();
-        if stopped {
-            notices.push(ChatItem::Notice { level: "warn".into(), text: "Detenida por el usuario.".into() });
+        if stopped && send_now {
+            notices.push(ChatItem::Notice { level: "info".into(), text: tr("Interrupted to send your messages.", "Interrumpida para enviar tus mensajes.") });
+        } else if stopped {
+            notices.push(ChatItem::Notice { level: "warn".into(), text: tr("Stopped by the user.", "Detenida por el usuario.") });
         } else if failed && turn.result_ok.is_none() {
             let detail = stderr.trim().lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
             notices.push(ChatItem::Notice {
                 level: "error".into(),
-                text: if detail.is_empty() { format!("claude terminó con código {code:?}") } else { detail },
+                text: if detail.is_empty() { format!("{} {code:?}", tr("claude exited with code", "claude terminó con código")) } else { detail },
             });
         }
         self.record(app, &session, notices);
@@ -302,6 +410,18 @@ impl SessionManager {
             };
             s.last_error = failed.then(|| stderr.trim().lines().last().unwrap_or("error").to_string());
         });
+        if flush {
+            // Goes straight from working to working, so the UI does not announce a finished turn.
+            if let Err(err) = self.flush_pending(app, id) {
+                if let Ok(session) = store.update_session(id, |s| {
+                    s.status = SessionStatus::Error;
+                    s.last_error = Some(err.to_string());
+                }) {
+                    emit_session(app, &session);
+                }
+            }
+            return;
+        }
         if let Ok(updated) = updated {
             emit_session(app, &updated);
         }
@@ -409,7 +529,7 @@ fn with_attachment_list(prompt: String, files: &[PathBuf]) -> String {
         return prompt;
     }
     let list: Vec<String> = files.iter().map(|f| format!("- {}", f.display())).collect();
-    format!("{prompt}\n\nArchivos adjuntos (léelos si son relevantes):\n{}", list.join("\n"))
+    format!("{prompt}\n\nAttached files (read them if relevant):\n{}", list.join("\n"))
 }
 
 /// The Claude account selected by a project; sessions refuse to run without one.
@@ -446,7 +566,7 @@ mod attachment_tests {
         assert_eq!(first[0].file_name().unwrap(), "spec.pdf");
         assert_eq!(second[0].file_name().unwrap(), "spec (2).pdf");
         let prompt = with_attachment_list("revisa".into(), &second);
-        assert!(prompt.starts_with("revisa\n\nArchivos adjuntos"));
+        assert!(prompt.starts_with("revisa\n\nAttached files"));
         assert!(prompt.contains("spec (2).pdf"));
         assert!(copy_attachments(&dir, &[root.join("src").to_string_lossy().to_string()]).is_err());
         let _ = std::fs::remove_dir_all(root);
@@ -545,6 +665,9 @@ mod e2e {
                     last_error: None,
                     base_branches: Default::default(),
                     last_model: None,
+                    pending: Vec::new(),
+        approvals: Vec::new(),
+        allowed_tools: Vec::new(),
                 });
                 Ok(())
             })

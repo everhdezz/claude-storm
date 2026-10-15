@@ -1,3 +1,5 @@
+import type { LanguagePref } from "./i18n";
+
 /** Shared domain types mirroring the Rust models (camelCase over the wire). */
 
 export type Framework = "next" | "vite" | "react" | "expo" | "laravel" | "node" | "generic";
@@ -73,6 +75,32 @@ export interface GitStatus {
   modified: number;
   untracked: number;
   conflicted: number;
+  insertions: number;
+  deletions: number;
+}
+
+export interface BranchInfo {
+  name: string;
+  remote: boolean;
+  current: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  worktree: string | null;
+  committedAt: number | null;
+}
+
+export interface BranchList {
+  current: string | null;
+  recent: string[];
+  branches: BranchInfo[];
+}
+
+export interface SessionFolder {
+  repoId: string;
+  repoName: string;
+  path: string;
+  exists: boolean;
 }
 
 export type ProcessStatus = "running" | "stopping" | "stopped" | "exited" | "failed";
@@ -84,6 +112,10 @@ export interface ProcessInfo {
   commandId: string;
   label: string;
   command: string;
+  cwd: string;
+  sessionId: string | null;
+  /** Session whose Claude started it through MCP; null when the user did. */
+  startedBy: string | null;
   longRunning: boolean;
   status: ProcessStatus;
   pid: number | null;
@@ -130,6 +162,35 @@ export interface Session {
   lastError: string | null;
   baseBranches: Record<string, string>;
   lastModel: string | null;
+  /** Messages sent while Claude was working; they go out together when the turn ends. */
+  pending: PendingMessage[];
+  /** Permission prompts and questions Claude is waiting on. */
+  approvals: ApprovalRequest[];
+  allowedTools: string[];
+}
+
+export interface ApprovalRequest {
+  id: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  at: string;
+}
+
+export interface ApprovalDecision {
+  allow: boolean;
+  always?: boolean;
+  /** AskUserQuestion: question text → chosen label(s), comma-separated for multi-select. */
+  answers?: Record<string, string>;
+  message?: string;
+}
+
+export interface PendingMessage {
+  id: string;
+  text: string;
+  prompt: string;
+  model: string | null;
+  attachments: string[];
+  at: string;
 }
 
 export type ChatItem =
@@ -203,4 +264,9 @@ export interface AppSettings {
   catalogUpdatedAt: string | null;
   defaultModel: string | null;
   maxParallelSessions: number;
+  editor: string;
+  notifications: NotificationMode;
+  language: LanguagePref;
 }
+
+export type NotificationMode = "background" | "always" | "off";

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::error::AppError;
@@ -27,7 +27,7 @@ pub struct UsageTarget {
 }
 
 /// Last known plan usage for one profile.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSnapshot {
     pub profile_key: String,
@@ -35,17 +35,40 @@ pub struct UsageSnapshot {
     pub bars: Vec<UsageBar>,
     pub raw_screen: String,
     pub error: Option<String>,
-    pub billing: &'static str,
+    pub billing: String,
 }
 
-/// Per-profile cache with single-flight refreshes.
+/// Per-profile cache with single-flight refreshes, persisted so the status bar has data right
+/// after launch instead of waiting for a fresh `/usage` probe (10-20 s).
 #[derive(Default)]
 pub struct UsageService {
     cache: Mutex<HashMap<String, UsageSnapshot>>,
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    file: Mutex<Option<PathBuf>>,
 }
 
 impl UsageService {
+    /// Loads the snapshots saved by the previous run from `dir` and keeps saving there.
+    pub fn load_from(&self, dir: &std::path::Path) {
+        let path = dir.join("usage-cache.json");
+        if let Ok(saved) = std::fs::read(&path).map_err(|_| ()).and_then(|b| serde_json::from_slice::<HashMap<String, UsageSnapshot>>(&b).map_err(|_| ())) {
+            let mut cache = self.cache.lock().unwrap();
+            for (key, snapshot) in saved {
+                cache.entry(key).or_insert(snapshot);
+            }
+        }
+        *self.file.lock().unwrap() = Some(path);
+    }
+
+    /// Writes the cache to disk (best effort).
+    fn save(&self) {
+        let Some(path) = self.file.lock().unwrap().clone() else { return };
+        let json = serde_json::to_vec(&*self.cache.lock().unwrap());
+        if let Ok(json) = json {
+            let _ = std::fs::write(path, json);
+        }
+    }
+
     /// Returns the cached snapshot for a profile, if any.
     pub fn cached(&self, key: &str) -> Option<UsageSnapshot> {
         self.cache.lock().unwrap().get(key).cloned()
@@ -60,7 +83,7 @@ impl UsageService {
                 bars: Vec::new(),
                 raw_screen: String::new(),
                 error: None,
-                billing: "api",
+                billing: "api".into(),
             };
         }
         let lock = self.locks.lock().unwrap().entry(target.key.clone()).or_default().clone();
@@ -74,6 +97,7 @@ impl UsageService {
         }
         let snapshot = fetch(target).await;
         self.cache.lock().unwrap().insert(snapshot.profile_key.clone(), snapshot.clone());
+        self.save();
         let _ = app.emit(USAGE_UPDATED, &snapshot);
         snapshot
     }
@@ -89,7 +113,7 @@ impl UsageService {
             bars: Vec::new(),
             raw_screen: String::new(),
             error: None,
-            billing: "subscription",
+            billing: "subscription".into(),
         });
         for w in windows {
             let label = match w.key.as_str() {
@@ -111,6 +135,8 @@ impl UsageService {
         snapshot.fetched_at = Utc::now();
         snapshot.error = None;
         let _ = app.emit(USAGE_UPDATED, &*snapshot);
+        drop(cache);
+        self.save();
     }
 }
 
@@ -130,7 +156,7 @@ async fn fetch(target: UsageTarget) -> UsageSnapshot {
         Ok(out) => {
             let bars = parse_usage(&out.screen, now);
             let error = bars.is_empty().then(|| "Could not parse the /usage output; showing raw text.".to_string());
-            UsageSnapshot { profile_key: key, fetched_at: now, bars, raw_screen: out.screen, error, billing: "subscription" }
+            UsageSnapshot { profile_key: key, fetched_at: now, bars, raw_screen: out.screen, error, billing: "subscription".into() }
         }
         Err(err) => {
             let full = err.to_string();
@@ -141,7 +167,7 @@ async fn fetch(target: UsageTarget) -> UsageSnapshot {
                 bars: Vec::new(),
                 raw_screen: rest.trim().to_string(),
                 error: Some(headline.trim().to_string()),
-                billing: "subscription",
+                billing: "subscription".into(),
             }
         }
     }

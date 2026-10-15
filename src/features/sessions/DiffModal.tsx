@@ -3,6 +3,7 @@ import { Center, Loader, Modal, ScrollArea, Stack, Text } from "@mantine/core";
 import { sessionDiff } from "../../api/sessions";
 import type { RepoDiff, Session } from "../../types";
 import { DiffBlock } from "./DiffBlock";
+import { t } from "../../i18n";
 
 /** Shows the diff of each repo touched by a session. */
 export function DiffModal({ session, opened, onClose }: { session: Session; opened: boolean; onClose: () => void }) {
@@ -34,10 +35,10 @@ export function DiffModal({ session, opened, onClose }: { session: Session; open
                 <Text fw={600} size="sm" mb={4}>
                   {d.repoName}{" "}
                   <Text span size="xs" c="dimmed">
-                    contra {d.base}
+                    {t("against {base}", { base: d.base })}
                   </Text>
                 </Text>
-                {d.diff.trim() ? <DiffBlock diff={d.diff} /> : <Text size="sm" c="dimmed">Sin cambios.</Text>}
+                {d.diff.trim() ? <DiffBlock diff={d.diff} /> : <Text size="sm" c="dimmed">{t("No changes.")}</Text>}
               </div>
             ))}
           </Stack>

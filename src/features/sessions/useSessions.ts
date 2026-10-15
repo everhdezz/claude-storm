@@ -1,26 +1,38 @@
 import { useEffect, useRef, useState } from "react";
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { listSessions, SESSION_CHANGED, SESSION_DELETED } from "../../api/sessions";
 import { useTauriEvent } from "../../hooks/useTauriEvent";
-import type { Session } from "../../types";
+import type { NotificationMode, Session } from "../../types";
+import { finishedTurn, newApproval, notifyApproval, notifySessionFinished } from "./sessionNotifications";
 
-/** Live list of a project's sessions; notifies when an unselected session finishes or fails. */
-export function useSessions(projectId: string, selectedId: string | null) {
+/** Live list of a project's sessions; notifies when a session finishes a turn (see `notifications`). */
+export function useSessions(projectId: string, selectedId: string | null, notifications: NotificationMode) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
+  const modeRef = useRef(notifications);
+  modeRef.current = notifications;
+  // Last status seen per session, kept outside state so notifying stays out of the state updater.
+  const known = useRef(new Map<string, Session>());
 
   useEffect(() => {
-    listSessions(projectId).then(setSessions).catch(() => setSessions([]));
+    listSessions(projectId)
+      .then((list) => {
+        known.current = new Map(list.map((s) => [s.id, s]));
+        setSessions(list);
+      })
+      .catch(() => setSessions([]));
   }, [projectId]);
 
   useTauriEvent<Session>(SESSION_CHANGED, (session) => {
     if (session.projectId !== projectId) return;
+    const before = known.current.get(session.id);
+    if (finishedTurn(before, session)) {
+      notifySessionFinished(session, modeRef.current, selectedRef.current);
+    } else if (newApproval(before, session)) {
+      notifyApproval(session, modeRef.current, selectedRef.current);
+    }
+    known.current.set(session.id, session);
     setSessions((prev) => {
-      const before = prev.find((s) => s.id === session.id);
-      if (before?.status === "working" && session.status !== "working" && session.id !== selectedRef.current) {
-        notifyFinished(session);
-      }
       const rest = prev.filter((s) => s.id !== session.id);
       return [session, ...rest].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
     });
@@ -29,20 +41,4 @@ export function useSessions(projectId: string, selectedId: string | null) {
   useTauriEvent<string>(SESSION_DELETED, (id) => setSessions((prev) => prev.filter((s) => s.id !== id)));
 
   return sessions;
-}
-
-/** Sends a desktop notification about a finished session. */
-async function notifyFinished(session: Session) {
-  try {
-    let granted = await isPermissionGranted();
-    if (!granted) granted = (await requestPermission()) === "granted";
-    if (!granted) return;
-    const failed = session.status === "error";
-    sendNotification({
-      title: failed ? `Falló: ${session.title}` : `Terminó: ${session.title}`,
-      body: failed ? (session.lastError ?? "La sesión terminó con error") : (session.summary ?? "Claude terminó su turno"),
-    });
-  } catch {
-    return;
-  }
 }

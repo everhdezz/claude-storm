@@ -21,7 +21,13 @@ pub struct SettingsView {
     pub catalog_updated_at: Option<chrono::DateTime<Utc>>,
     pub default_model: Option<String>,
     pub max_parallel_sessions: usize,
+    pub editor: String,
+    pub notifications: String,
+    pub language: String,
 }
+
+/// Editor used when none is configured.
+pub const DEFAULT_EDITOR: &str = "WebStorm";
 
 /// A model of Claude Code's picker plus whether the user enabled it.
 #[derive(Debug, Clone, Serialize)]
@@ -64,6 +70,9 @@ fn view(store: &Store) -> SettingsView {
         catalog_updated_at: d.settings.catalog_updated_at,
         default_model: d.settings.default_model.clone(),
         max_parallel_sessions: d.settings.max_parallel_sessions,
+        editor: d.settings.editor.clone().unwrap_or_else(|| DEFAULT_EDITOR.into()),
+        notifications: d.settings.notifications.clone().unwrap_or_else(|| "background".into()),
+        language: d.settings.language.clone().unwrap_or_else(|| "auto".into()),
     })
 }
 
@@ -234,6 +243,67 @@ pub fn set_max_parallel_sessions(app: AppHandle, store: State<Store>, value: usi
         Ok(())
     })?;
     broadcast(&app, &store);
+    Ok(())
+}
+
+/// Sets the editor used by "Abrir en editor" (an app name on macOS, a command elsewhere).
+#[tauri::command]
+pub fn set_editor(app: AppHandle, store: State<Store>, editor: String) -> AppResult<()> {
+    store.write(|d| {
+        d.settings.editor = Some(editor.trim().to_string()).filter(|e| !e.is_empty());
+        Ok(())
+    })?;
+    broadcast(&app, &store);
+    Ok(())
+}
+
+/// Sets when finished sessions trigger a desktop notification.
+#[tauri::command]
+pub fn set_notifications(app: AppHandle, store: State<Store>, mode: String) -> AppResult<()> {
+    if !matches!(mode.as_str(), "background" | "always" | "off") {
+        return Err(AppError::msg(format!("Unknown notification mode {mode}")));
+    }
+    store.write(|d| {
+        d.settings.notifications = Some(mode);
+        Ok(())
+    })?;
+    broadcast(&app, &store);
+    Ok(())
+}
+
+/// Sets the UI language ("auto" follows the operating system).
+#[tauri::command]
+pub fn set_language(app: AppHandle, store: State<Store>, language: String) -> AppResult<()> {
+    let language = language.trim().to_string();
+    if language.is_empty() || language.len() > 10 {
+        return Err(AppError::msg("Invalid language"));
+    }
+    store.write(|d| {
+        d.settings.language = Some(language).filter(|l| l != "auto");
+        Ok(())
+    })?;
+    broadcast(&app, &store);
+    Ok(())
+}
+
+/// Opens a folder in the configured editor.
+#[tauri::command]
+pub fn open_in_editor(store: State<Store>, path: String) -> AppResult<()> {
+    let editor = store.read(|d| d.settings.editor.clone()).unwrap_or_else(|| DEFAULT_EDITOR.into());
+    if cfg!(target_os = "macos") {
+        let out = crate::shell_env::command("open").args(["-a", &editor, &path]).output()?;
+        if !out.status.success() {
+            return Err(AppError::msg(format!("Could not open {editor}: {}", String::from_utf8_lossy(&out.stderr).trim())));
+        }
+        return Ok(());
+    }
+    crate::shell_env::command(&editor)
+        .arg(&path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| AppError::msg(format!("Could not open {editor}: {e}")))?;
     Ok(())
 }
 

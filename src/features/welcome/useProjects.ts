@@ -3,6 +3,7 @@ import { listProjects, PROJECTS_CHANGED } from "../../api/projects";
 import { useTauriEvent } from "../../hooks/useTauriEvent";
 import { notifyError } from "../../hooks/notify";
 import type { ProjectSummary } from "../../types";
+import { t } from "../../i18n";
 
 /** Keeps the project list in sync with the backend store. */
 export function useProjects() {
@@ -13,7 +14,7 @@ export function useProjects() {
     try {
       setProjects(await listProjects());
     } catch (err) {
-      notifyError(err, "No se pudieron cargar los proyectos");
+      notifyError(err, t("Could not load the projects"));
     } finally {
       setLoading(false);
     }

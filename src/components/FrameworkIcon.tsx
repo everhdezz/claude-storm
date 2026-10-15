@@ -10,6 +10,7 @@ import {
   type Icon,
 } from "@tabler/icons-react";
 import type { Framework } from "../types";
+import { t } from "../i18n";
 
 interface FrameworkMeta {
   label: string;
@@ -24,7 +25,7 @@ const META: Record<Framework, FrameworkMeta> = {
   expo: { label: "Expo", color: "indigo", icon: IconDeviceMobile },
   laravel: { label: "Laravel", color: "red", icon: IconBrandLaravel },
   node: { label: "Node", color: "green", icon: IconBrandNodejs },
-  generic: { label: "Genérico", color: "dark", icon: IconFolder },
+  generic: { label: t("Generic"), color: "dark", icon: IconFolder },
 };
 
 /** Returns display metadata for a framework. */

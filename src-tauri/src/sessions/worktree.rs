@@ -106,16 +106,16 @@ mod tests {
         run_git(&repo, &["commit", "-qm", "init"]).unwrap();
 
         let wt = root.join("wt/repo");
-        add(&repo, &wt, "claude-storm/test").unwrap();
+        add(&repo, &wt, "session-test").unwrap();
         fs::write(wt.join("a.txt"), "two\n").unwrap();
         fs::write(wt.join("b.txt"), "new\n").unwrap();
         let d = diff(&wt, "main").unwrap();
         assert!(d.contains("+two") && d.contains("b.txt"), "{d}");
         assert!(commit(&wt, "change").unwrap());
         assert!(!commit(&wt, "noop").unwrap());
-        merge(&repo, "main", "claude-storm/test").unwrap();
+        merge(&repo, "main", "session-test").unwrap();
         assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "two\n");
-        remove(&repo, &wt, "claude-storm/test", true).unwrap();
+        remove(&repo, &wt, "session-test", true).unwrap();
         assert!(!wt.exists());
         let _ = fs::remove_dir_all(root);
     }

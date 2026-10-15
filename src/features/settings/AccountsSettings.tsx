@@ -19,6 +19,7 @@ import type { ClaudeAccount } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
 import { LoginWizard } from "./LoginWizard";
 import classes from "./settings.module.css";
+import { t } from "../../i18n";
 
 type Editing = { kind: "edit"; account: ClaudeAccount } | { kind: "newSimple" } | null;
 type Wizard = { reconnect: ClaudeAccount | null } | null;
@@ -31,16 +32,16 @@ export function AccountsSettings() {
 
   function confirmDelete(account: ClaudeAccount) {
     modals.openConfirmModal({
-      title: `Eliminar «${account.alias}»`,
+      title: t("Delete “{account}”", { account: account.alias }),
       centered: true,
       children: (
         <Text size="sm">
           {account.kind === "profile"
-            ? "Claude Code cerrará la sesión de este perfil y se borrará su carpeta. Los proyectos que lo usen quedarán sin cuenta."
-            : "Los proyectos que la usen quedarán sin cuenta."}
+            ? t("Claude Code will log this profile out and its folder will be deleted. Projects using it will be left without an account.")
+            : t("Projects using it will be left without an account.")}
         </Text>
       ),
-      labels: { confirm: "Eliminar", cancel: "Cancelar" },
+      labels: { confirm: t("Delete"), cancel: t("Cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => deleteAccount(account.id).catch((err) => notifyError(err)),
     });
@@ -50,30 +51,30 @@ export function AccountsSettings() {
     <Stack>
       <Group justify="space-between" align="flex-start">
         <div>
-          <Title order={4}>Cuentas de Claude</Title>
+          <Title order={4}>{t("Claude accounts")}</Title>
           <Text size="sm" c="dimmed">
-            Cada suscripción es un perfil aislado donde Claude Code hace y guarda su propio login; claude-storm nunca ve esas credenciales.
+            {t("Each subscription is an isolated profile where Claude Code performs and stores its own login; ClaudeStorm never sees those credentials.")}
           </Text>
         </div>
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
             <Button size="xs" leftSection={<IconPlus size={14} />} rightSection={<IconChevronDown size={12} />}>
-              Agregar cuenta
+              {t("Add account")}
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Item leftSection={<IconPlugConnected size={14} />} onClick={() => setWizard({ reconnect: null })}>
-              Suscripción de Claude (iniciar sesión)
+              {t("Claude subscription (log in)")}
             </Menu.Item>
             <Menu.Item leftSection={<IconKey size={14} />} onClick={() => setEditing({ kind: "newSimple" })}>
-              API key o login de este equipo
+              {t("API key or this computer's login")}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </Group>
       {settings.accounts.length === 0 && !editing && (
         <Text size="sm" c="dimmed">
-          Aún no hay cuentas.
+          {t("No accounts yet.")}
         </Text>
       )}
       {settings.accounts.map((a) => (
@@ -85,7 +86,7 @@ export function AccountsSettings() {
               {a.kind === "profile" && <ProfileBadge account={a} />}
               {a.id === projectAccount?.id && (
                 <Badge size="xs" variant="light">
-                  usada en {project.name}
+                  {t("used in {project}", { project: project.name })}
                 </Badge>
               )}
             </Group>
@@ -98,40 +99,40 @@ export function AccountsSettings() {
           </div>
           {a.id !== projectAccount?.id && (
             <Button size="compact-xs" variant="light" onClick={() => setProjectAccount(project.id, a.id).catch((e) => notifyError(e))}>
-              Usar en este proyecto
+              {t("Use in this project")}
             </Button>
           )}
           {a.kind === "profile" && (
             <Menu position="bottom-end" withinPortal>
               <Menu.Target>
-                <ActionIcon variant="subtle" color="gray" aria-label="Acciones del perfil">
+                <ActionIcon variant="subtle" color="gray" aria-label={t("Profile actions")}>
                   <IconRefresh size={15} />
                 </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item leftSection={<IconPlugConnected size={13} />} onClick={() => setWizard({ reconnect: a })}>
-                  Reconectar cuenta
+                  {t("Reconnect account")}
                 </Menu.Item>
                 <Menu.Item
                   leftSection={<IconRefresh size={13} />}
                   onClick={() =>
                     resyncProfile(a.id)
-                      .then((copied) => notifySuccess(copied.length ? `Sincronizado: ${copied.join(", ")}` : "No había config compartida"))
+                      .then((copied) => notifySuccess(copied.length ? t("Synced: {items}", { items: copied.join(", ") }) : t("There was no shared config")))
                       .catch((err) => notifyError(err))
                   }
                 >
-                  Sincronizar config compartida
+                  {t("Sync shared config")}
                 </Menu.Item>
               </Menu.Dropdown>
             </Menu>
           )}
-          <Tooltip label="Editar">
-            <ActionIcon variant="subtle" color="gray" onClick={() => setEditing({ kind: "edit", account: a })} aria-label="Editar">
+          <Tooltip label={t("Edit")}>
+            <ActionIcon variant="subtle" color="gray" onClick={() => setEditing({ kind: "edit", account: a })} aria-label={t("Edit")}>
               <IconPencil size={15} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label="Eliminar">
-            <ActionIcon variant="subtle" color="red" onClick={() => confirmDelete(a)} aria-label="Eliminar">
+          <Tooltip label={t("Delete")}>
+            <ActionIcon variant="subtle" color="red" onClick={() => confirmDelete(a)} aria-label={t("Delete")}>
               <IconTrash size={15} />
             </ActionIcon>
           </Tooltip>
@@ -165,11 +166,11 @@ function ProfileBadge({ account }: { account: ClaudeAccount }) {
   if (checking) return <Loader size={10} />;
   return account.needsLogin ? (
     <Badge size="xs" color="yellow" variant="light">
-      requiere login
+      {t("needs login")}
     </Badge>
   ) : (
     <Badge size="xs" color="teal" variant="light">
-      conectada
+      {t("connected")}
     </Badge>
   );
 }
@@ -199,7 +200,7 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
     try {
       if (account) {
         await updateAccount(account.id, { alias: values.alias, secret: values.secret, defaultModel: values.defaultModel });
-        notifySuccess("Cuenta actualizada");
+        notifySuccess(t("Account updated"));
       } else {
         const created = await createAccount({
           alias: values.alias,
@@ -207,11 +208,11 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
           secret: values.kind === "apiKey" ? values.secret : null,
           defaultModel: values.defaultModel || null,
         });
-        notifySuccess(`Cuenta «${created.alias}» agregada`);
+        notifySuccess(t("Account “{account}” added", { account: created.alias }));
       }
       onDone();
     } catch (err) {
-      notifyError(err, "No se pudo guardar la cuenta");
+      notifyError(err, t("Could not save the account"));
     }
   }
 
@@ -219,14 +220,14 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
     <form onSubmit={handleSubmit(submit)}>
       <Stack gap="sm" p="md" style={{ border: "1px solid var(--dh-island-border)", borderRadius: 8 }}>
         <Text fw={600} size="sm">
-          {account ? `Editar ${account.alias}` : "Nueva cuenta"}
+          {account ? t("Edit {account}", { account: account.alias }) : t("New account")}
         </Text>
         <TextInput
           label="Alias"
-          placeholder="Trabajo, Personal, Cliente X…"
+          placeholder={t("Work, Personal, Client X…")}
           data-autofocus
           error={formState.errors.alias?.message}
-          {...register("alias", { validate: (v) => v.trim().length > 0 || "Obligatorio" })}
+          {...register("alias", { validate: (v) => v.trim().length > 0 || t("Required") })}
         />
         {!account && (
           <Controller
@@ -247,15 +248,15 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
         {showKey && (
           <PasswordInput
             label="API key"
-            description="Se guarda en el llavero del sistema y se inyecta como ANTHROPIC_API_KEY (cobro por token)."
-            placeholder={account ? `Deja vacío para conservar ${account.tokenHint ?? "la actual"}` : "sk-ant-api…"}
+            description={t("Stored in the system keychain and passed as ANTHROPIC_API_KEY (billed per token).")}
+            placeholder={account ? t("Leave empty to keep {key}", { key: account.tokenHint ?? t("the current one") }) : "sk-ant-api…"}
             error={formState.errors.secret?.message}
-            {...register("secret", { validate: (v) => !!account || v.trim().length > 0 || "Obligatorio" })}
+            {...register("secret", { validate: (v) => !!account || v.trim().length > 0 || t("Required") })}
           />
         )}
         {!account && kind === "systemLogin" && (
           <Text size="xs" c="dimmed">
-            Usa la sesión con la que ya iniciaste Claude Code en este equipo (~/.claude).
+            {t("Uses the session you already logged into Claude Code with on this computer (~/.claude).")}
           </Text>
         )}
         <Controller
@@ -263,8 +264,8 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
           name="defaultModel"
           render={({ field }) => (
             <Select
-              label="Modelo por defecto de esta cuenta"
-              placeholder="El global"
+              label={t("This account's default model")}
+              placeholder={t("The global one")}
               clearable
               data={modelOptions(settings.catalog)}
               value={field.value || null}
@@ -274,10 +275,10 @@ function AccountForm({ account, onDone }: { account: ClaudeAccount | null; onDon
         />
         <Group justify="flex-end">
           <Button variant="default" onClick={onDone}>
-            Cancelar
+            {t("Cancel")}
           </Button>
           <Button type="submit" loading={formState.isSubmitting}>
-            {account ? "Guardar" : "Agregar"}
+            {account ? t("Save") : t("Add")}
           </Button>
         </Group>
       </Stack>

@@ -3,10 +3,10 @@
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// One usage bar shown by `/usage` (session window, weekly window, per-model limits...).
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageBar {
     pub label: String,

@@ -10,6 +10,7 @@ import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
 import { statusColor, statusText } from "./SessionStatusBadge";
 import classes from "./sessions.module.css";
+import { t, tn } from "../../i18n";
 
 /** Card of one session in the Chats tool window. */
 export function SessionCard({ session, selected }: { session: Session; selected: boolean }) {
@@ -40,13 +41,13 @@ export function SessionCard({ session, selected }: { session: Session; selected:
       archiveSession(session.id, false).catch((e) => notifyError(e));
       return;
     }
-    askCleanup(session, "Archivar sesión", "Archivar", false, (cleanup) => {
+    askCleanup(session, t("Archive session"), t("Archive"), false, (cleanup) => {
       archiveSession(session.id, true, cleanup).then(leaveIfSelected).catch((e) => notifyError(e));
     });
   }
 
   function remove() {
-    askCleanup(session, "Eliminar sesión", "Eliminar", true, (cleanup) => {
+    askCleanup(session, t("Delete session"), t("Delete"), true, (cleanup) => {
       deleteSession(session.id, cleanup).then(leaveIfSelected).catch((e) => notifyError(e));
     });
   }
@@ -78,28 +79,28 @@ export function SessionCard({ session, selected }: { session: Session; selected:
         )}
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
-            <ActionIcon variant="subtle" color="gray" size="sm" onClick={(e) => e.stopPropagation()} aria-label="Acciones de la sesión">
+            <ActionIcon variant="subtle" color="gray" size="sm" onClick={(e) => e.stopPropagation()} aria-label={t("Session actions")}>
               <IconDots size={14} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
             {isBusy(session) && (
               <Menu.Item leftSection={<IconPlayerStop size={13} />} color="red" onClick={() => stopSession(session.id).catch((e) => notifyError(e))}>
-                Detener
+                {t("Stop")}
               </Menu.Item>
             )}
             <Menu.Item leftSection={<IconPencil size={13} />} onClick={() => setEditing(true)}>
-              Renombrar
+              {t("Rename")}
             </Menu.Item>
             <Menu.Item leftSection={<IconCopy size={13} />} onClick={duplicate} disabled={session.mode === "isolated"}>
-              Duplicar
+              {t("Duplicate")}
             </Menu.Item>
             <Menu.Item leftSection={session.archived ? <IconArchiveOff size={13} /> : <IconArchive size={13} />} onClick={archive}>
-              {session.archived ? "Desarchivar" : "Archivar"}
+              {session.archived ? t("Unarchive") : t("Archive")}
             </Menu.Item>
             <Menu.Divider />
             <Menu.Item color="red" leftSection={<IconTrash size={13} />} onClick={remove}>
-              Eliminar
+              {t("Delete")}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
@@ -114,9 +115,13 @@ export function SessionCard({ session, selected }: { session: Session; selected:
           {session.status === "working" && <Loader size={10} />}
           <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
             {relativeTime(session.lastActivityAt)}
-            {session.filesTouched.length > 0 && ` · ${session.filesTouched.length} archivo(s)`}
+            {session.filesTouched.length > 0 && ` · ${tn(session.filesTouched.length, "{count} file", "{count} files")}`}
           </Text>
-          {statusText(session.status) && (
+          {session.approvals.length > 0 ? (
+            <Text size="xs" c="yellow.4" truncate>
+              · {t("needs your answer")}
+            </Text>
+          ) : statusText(session.status) && (
             <Text size="xs" c={`${statusColor(session.status)}.4`} truncate>
               · {statusText(session.status)}
             </Text>
@@ -141,19 +146,19 @@ function askCleanup(session: Session, title: string, confirmLabel: string, destr
     children:
       session.mode === "isolated" ? (
         <Stack gap="xs">
-          <Text size="sm">¿Qué hago con el worktree y la rama {session.branch}?</Text>
+          <Text size="sm">{t("What should happen to the worktree and the branch {branch}?", { branch: session.branch ?? "" })}</Text>
           <Radio.Group defaultValue={choice} onChange={(v) => (choice = v as WorktreeCleanup)}>
             <Stack gap={6}>
-              <Radio value="keep" label="Conservar worktree y rama" />
-              <Radio value="removeWorktree" label="Borrar el worktree, conservar la rama" />
-              <Radio value="removeWorktreeAndBranch" label="Borrar worktree y rama (se pierden cambios sin merge)" />
+              <Radio value="keep" label={t("Keep worktree and branch")} />
+              <Radio value="removeWorktree" label={t("Delete the worktree, keep the branch")} />
+              <Radio value="removeWorktreeAndBranch" label={t("Delete worktree and branch (unmerged changes are lost)")} />
             </Stack>
           </Radio.Group>
         </Stack>
       ) : (
-        <Text size="sm">{destructive ? "Se borra la sesión y su historial. Los archivos de los repos no se tocan." : "Se oculta de la lista; puedes verla con el filtro de archivadas."}</Text>
+        <Text size="sm">{destructive ? t("The session and its history are deleted. Repo files are not touched.") : t("It is hidden from the list; you can see it with the archived filter.")}</Text>
       ),
-    labels: { confirm: confirmLabel, cancel: "Cancelar" },
+    labels: { confirm: confirmLabel, cancel: t("Cancel") },
     confirmProps: destructive ? { color: "red" } : undefined,
     onConfirm: () => onConfirm(choice),
   });

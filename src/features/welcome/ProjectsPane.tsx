@@ -10,6 +10,7 @@ import { ProjectRow } from "./ProjectRow";
 import { useListKeyboard } from "./useListKeyboard";
 import { useProjects } from "./useProjects";
 import classes from "./welcome.module.css";
+import { t } from "../../i18n";
 
 type Dialog = { kind: "create" } | { kind: "rename"; project: ProjectSummary } | null;
 
@@ -29,7 +30,7 @@ export function ProjectsPane() {
     try {
       await openProjectWindow(project.id);
     } catch (err) {
-      notifyError(err, "No se pudo abrir el proyecto");
+      notifyError(err, t("Could not open the project"));
     }
   }
 
@@ -55,14 +56,14 @@ export function ProjectsPane() {
 
   function confirmDelete(project: ProjectSummary) {
     modals.openConfirmModal({
-      title: `Quitar "${project.name}"`,
+      title: t("Remove “{project}”", { project: project.name }),
       centered: true,
       children: (
         <Text size="sm">
-          Solo se elimina el registro del proyecto en claude-storm. Los repos y archivos en disco no se tocan.
+          {t("Only the project entry in ClaudeStorm is removed. Repos and files on disk are not touched.")}
         </Text>
       ),
-      labels: { confirm: "Quitar", cancel: "Cancelar" },
+      labels: { confirm: t("Remove"), cancel: t("Cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => deleteProject(project.id).catch((err) => notifyError(err)),
     });
@@ -73,7 +74,7 @@ export function ProjectsPane() {
       <div className={classes.toolbar}>
         <TextInput
           className={classes.search}
-          placeholder="Buscar proyectos"
+          placeholder={t("Search projects")}
           leftSection={<IconSearch size={18} />}
           value={query}
           autoFocus
@@ -83,7 +84,7 @@ export function ProjectsPane() {
           }}
         />
         <Button variant="default" onClick={() => setDialog({ kind: "create" })}>
-          Nuevo proyecto
+          {t("New project")}
         </Button>
       </div>
 
@@ -95,9 +96,9 @@ export function ProjectsPane() {
         ) : visible.length === 0 ? (
           <Center py={80}>
             <Stack align="center" gap={4}>
-              <Text fw={600}>{projects.length === 0 ? "Aún no tienes proyectos" : "Sin resultados"}</Text>
+              <Text fw={600}>{projects.length === 0 ? t("You have no projects yet") : t("No results")}</Text>
               <Text size="sm" c="dimmed">
-                {projects.length === 0 ? "Crea uno y agrégale los repos con los que trabajas." : "Prueba con otro nombre."}
+                {projects.length === 0 ? t("Create one and add the repos you work with.") : t("Try another name.")}
               </Text>
             </Stack>
           </Center>
@@ -120,8 +121,8 @@ export function ProjectsPane() {
 
       <ProjectNameModal
         opened={dialog !== null}
-        title={dialog?.kind === "rename" ? "Renombrar proyecto" : "Nuevo proyecto"}
-        submitLabel={dialog?.kind === "rename" ? "Guardar" : "Crear y abrir"}
+        title={dialog?.kind === "rename" ? t("Rename project") : t("New project")}
+        submitLabel={dialog?.kind === "rename" ? t("Save") : t("Create and open")}
         initialName={dialog?.kind === "rename" ? dialog.project.name : ""}
         onClose={() => setDialog(null)}
         onSubmit={dialog?.kind === "rename" ? handleRename : handleCreate}

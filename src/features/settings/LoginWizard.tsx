@@ -37,6 +37,7 @@ import type { ClaudeAccount, LoginProgress, ProfileCheck } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
 import { timeUntil } from "../status/useClaudeUsage";
 import { WizardSteps } from "./WizardSteps";
+import { t } from "../../i18n";
 
 type Step = "data" | "prepare" | "authorize" | "code" | "verify" | "done";
 
@@ -106,7 +107,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
     } else {
       loginRef.current = null;
       setLoginId(null);
-      setFailure({ message: p.message ?? "El login no se completó.", details: p.details });
+      setFailure({ message: p.message ?? t("The login did not complete."), details: p.details });
     }
   });
 
@@ -120,7 +121,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
       loginRef.current = id;
       setLoginId(id);
     } catch (err) {
-      setFailure({ message: "No se pudo iniciar el login de Claude Code.", details: String(err instanceof Error ? err.message : err) });
+      setFailure({ message: t("Could not start the Claude Code login."), details: String(err instanceof Error ? err.message : err) });
     }
   }
 
@@ -133,7 +134,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
       setStep("authorize");
       await startLogin(created);
     } catch (err) {
-      setFailure({ message: "No se pudo preparar el perfil.", details: String(err instanceof Error ? err.message : err) });
+      setFailure({ message: t("Could not prepare the profile."), details: String(err instanceof Error ? err.message : err) });
     }
   }
 
@@ -147,8 +148,8 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
       if (!result.loggedIn || !result.replyOk) {
         setFailure({
           message: result.loggedIn
-            ? "La cuenta inició sesión pero Claude no respondió correctamente."
-            : "Claude Code no ve una sesión activa en este perfil.",
+            ? t("The account logged in but Claude did not answer correctly.")
+            : t("Claude Code does not see an active session in this profile."),
           details: result.details,
         });
         return;
@@ -157,7 +158,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
       setStep("done");
       if (!reconnect) onCreated(target);
     } catch (err) {
-      setFailure({ message: "No se pudo verificar la cuenta.", details: String(err instanceof Error ? err.message : err) });
+      setFailure({ message: t("Could not verify the account."), details: String(err instanceof Error ? err.message : err) });
     }
   }
 
@@ -194,29 +195,29 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
   }
 
   const steps: { id: Step; label: string }[] = [
-    { id: "data", label: "Datos" },
-    { id: "prepare", label: "Perfil" },
-    { id: "authorize", label: "Autoriza" },
-    ...(codeOpen ? [{ id: "code" as Step, label: "Código" }] : []),
-    { id: "verify", label: "Verifica" },
-    { id: "done", label: "Listo" },
+    { id: "data", label: t("Details") },
+    { id: "prepare", label: t("Profile") },
+    { id: "authorize", label: t("Authorize") },
+    ...(codeOpen ? [{ id: "code" as Step, label: t("Code") }] : []),
+    { id: "verify", label: t("Verify") },
+    { id: "done", label: t("Done") },
   ];
   const current: Step = step === "authorize" && codeOpen ? "code" : step;
   const active = steps.findIndex((s) => s.id === current);
 
   return (
-    <Modal opened={opened} onClose={cancel} title={reconnect ? `Reconectar ${reconnect.alias}` : "Agregar cuenta de Claude"} size={560} centered closeOnClickOutside={false}>
+    <Modal opened={opened} onClose={cancel} title={reconnect ? t("Reconnect {account}", { account: reconnect.alias }) : t("Add a Claude account")} size={560} centered closeOnClickOutside={false}>
       <WizardSteps labels={steps.map((s) => s.label)} active={active} />
 
       {failure ? (
         <Stack>
-          <Alert color="red" variant="light" title="Algo salió mal">
+          <Alert color="red" variant="light" title={t("Something went wrong")}>
             {failure.message}
           </Alert>
           {failure.details && (
             <>
               <Anchor size="xs" onClick={() => setShowDetails((v) => !v)}>
-                {showDetails ? "Ocultar detalles técnicos" : "Ver detalles técnicos"}
+                {showDetails ? t("Hide technical details") : t("Show technical details")}
               </Anchor>
               <Collapse in={showDetails}>
                 <Code block fz={11} mah={200} style={{ overflow: "auto" }}>
@@ -227,9 +228,9 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={cancel}>
-              Cancelar
+              {t("Cancel")}
             </Button>
-            <Button onClick={retry}>Reintentar</Button>
+            <Button onClick={retry}>{t("Retry")}</Button>
           </Group>
         </Stack>
       ) : step === "data" ? (
@@ -237,35 +238,34 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
           <Stack>
             <TextInput
               label="Alias"
-              placeholder="Trabajo, Personal, Cliente X…"
+              placeholder={t("Work, Personal, Client X…")}
               data-autofocus
               error={formState.errors.alias?.message}
-              {...register("alias", { validate: (v) => v.trim().length > 0 || "Obligatorio" })}
+              {...register("alias", { validate: (v) => v.trim().length > 0 || t("Required") })}
             />
             <Select
-              label="Modelo por defecto"
-              placeholder="El global"
+              label={t("Default model")}
+              placeholder={t("The global one")}
               clearable
               data={modelOptions(settings.catalog)}
               value={watch("defaultModel") || null}
               onChange={(v) => setValue("defaultModel", v ?? "")}
             />
             <Text size="xs" c="dimmed">
-              Se crea un perfil aislado de Claude Code. El inicio de sesión lo hace Claude Code en tu navegador; claude-storm nunca ve tu contraseña ni tus
-              credenciales.
+              {t("An isolated Claude Code profile is created. Claude Code does the login in your browser; ClaudeStorm never sees your password or credentials.")}
             </Text>
             <Group justify="flex-end">
               <Button variant="default" onClick={cancel}>
-                Cancelar
+                {t("Cancel")}
               </Button>
               <Button type="submit" loading={formState.isSubmitting}>
-                Continuar
+                {t("Continue")}
               </Button>
             </Group>
           </Stack>
         </form>
       ) : step === "prepare" ? (
-        <WizardWait title="Preparando el perfil" text="Copiando tu configuración compartida (settings, CLAUDE.md, agents, commands, skills, MCP)…" />
+        <WizardWait title={t("Preparing the profile")} text={t("Copying your shared configuration (settings, CLAUDE.md, agents, commands, skills, MCP)…")} />
       ) : step === "authorize" ? (
         <Stack>
           <Group wrap="nowrap" align="flex-start">
@@ -273,17 +273,17 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
               <IconBrowser size={22} />
             </ThemeIcon>
             <div>
-              <Text fw={600}>Autoriza en tu navegador</Text>
+              <Text fw={600}>{t("Authorize in your browser")}</Text>
               <Text size="sm" c="dimmed">
                 {manualUrl
                   ? browserOpened
-                    ? "Abrimos la página de Claude. Inicia sesión con la cuenta que quieres usar y acepta el acceso; aquí se detecta solo."
-                    : "Abre el enlace en tu navegador, inicia sesión y acepta el acceso."
-                  : "Iniciando Claude Code…"}
+                    ? t("We opened Claude's page. Log in with the account you want to use and accept access; it is detected here automatically.")
+                    : t("Open the link in your browser, log in and accept access.")
+                  : t("Starting Claude Code…")}
               </Text>
               {synced.length > 0 && (
                 <Text size="xs" c="dimmed" mt={4}>
-                  Config copiada: {synced.join(", ")}
+                  {t("Config copied: {items}", { items: synced.join(", ") })}
                 </Text>
               )}
             </div>
@@ -291,12 +291,12 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
           <Group justify="center" py="xs">
             <Loader size="sm" type="dots" />
             <Text size="sm" c="dimmed">
-              Esperando la autorización (máx. 5 min)
+              {t("Waiting for authorization (5 min max)")}
             </Text>
           </Group>
           <Group justify="center" gap="xs">
             <Button size="xs" variant="default" leftSection={<IconExternalLink size={14} />} disabled={!loginId || !manualUrl} onClick={() => loginId && reopenLoginUrl(loginId)}>
-              Abrir de nuevo
+              {t("Open again")}
             </Button>
             <Button
               size="xs"
@@ -305,22 +305,22 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
               disabled={!manualUrl}
               onClick={() => manualUrl && navigator.clipboard.writeText(manualUrl)}
             >
-              Copiar enlace
+              {t("Copy link")}
             </Button>
           </Group>
           {!codeOpen ? (
             <Anchor size="xs" ta="center" onClick={() => setCodeOpen(true)}>
-              ¿La página te mostró un código para pegar?
+              {t("Did the page show you a code to paste?")}
             </Anchor>
           ) : (
             <Paper withBorder p="md" radius="md">
               <Text size="sm" fw={600} mb={6}>
-                Pega el código de autorización
+                {t("Paste the authorization code")}
               </Text>
               <Group wrap="nowrap" align="flex-start">
                 <TextInput
                   style={{ flex: 1 }}
-                  placeholder="código#estado"
+                  placeholder={t("code#state")}
                   value={code}
                   onChange={(e) => setCode(e.currentTarget.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendCode()}
@@ -329,19 +329,19 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
                   autoFocus
                 />
                 <Button onClick={sendCode} disabled={!code.trim()}>
-                  Enviar
+                  {t("Send")}
                 </Button>
               </Group>
             </Paper>
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={cancel}>
-              Cancelar
+              {t("Cancel")}
             </Button>
           </Group>
         </Stack>
       ) : step === "verify" ? (
-        <WizardWait title="Verificando" text="Confirmando con Claude Code que la cuenta tiene sesión y responde…" />
+        <WizardWait title={t("Verifying")} text={t("Confirming with Claude Code that the account is logged in and answers…")} />
       ) : (
         <Stack>
           <Paper withBorder p="md" radius="md">
@@ -363,7 +363,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
                     <Group justify="space-between">
                       <Text size="xs">{b.label}</Text>
                       <Text size="xs" c="dimmed">
-                        {b.percent}%{b.resetsAt ? ` · reinicia en ${timeUntil(b.resetsAt)}` : ""}
+                        {b.percent}%{b.resetsAt ? ` · ${t("resets in {time}", { time: timeUntil(b.resetsAt) ?? "" })}` : ""}
                       </Text>
                     </Group>
                     <Progress value={b.percent} size="sm" color={b.percent >= 85 ? "red" : b.percent >= 60 ? "yellow" : "teal"} />
@@ -372,12 +372,12 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
               </Stack>
             ) : (
               <Text size="xs" c="dimmed">
-                El uso de esta cuenta aparecerá en el footer en cuanto Claude Code lo reporte.
+                {t("This account's usage will show up in the footer as soon as Claude Code reports it.")}
               </Text>
             )}
           </Paper>
           <Group justify="flex-end">
-            <Button onClick={onClose}>Listo</Button>
+            <Button onClick={onClose}>{t("Done")}</Button>
           </Group>
         </Stack>
       )}

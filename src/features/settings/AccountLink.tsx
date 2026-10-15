@@ -3,13 +3,14 @@ import { IconCheck, IconChevronDown, IconSettings, IconUserCircle } from "@table
 import { ACCOUNT_KIND_LABELS, setProjectAccount } from "../../api/settings";
 import { notifyError } from "../../hooks/notify";
 import { useProjectContext } from "../project/ProjectContext";
+import { t } from "../../i18n";
 
 /** Link-style picker of the project's Claude account; changing it applies to the whole project. */
 export function AccountLink({ size = "xs" }: { size?: "xs" | "sm" }) {
   const { project, account, settings, openSettings } = useProjectContext();
 
   function choose(accountId: string) {
-    setProjectAccount(project.id, accountId).catch((err) => notifyError(err, "No se pudo cambiar la cuenta"));
+    setProjectAccount(project.id, accountId).catch((err) => notifyError(err, t("Could not change the account")));
   }
 
   return (
@@ -22,16 +23,16 @@ export function AccountLink({ size = "xs" }: { size?: "xs" | "sm" }) {
             td="underline"
             style={{ textUnderlineOffset: 3, display: "inline-flex", alignItems: "center", gap: 3 }}
           >
-            {account ? account.alias : "Elegir cuenta de Claude"}
+            {account ? account.alias : t("Choose a Claude account")}
             <IconChevronDown size={11} />
           </Text>
         </UnstyledButton>
       </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Label>Cuenta de Claude de este proyecto</Menu.Label>
+        <Menu.Label>{t("This project's Claude account")}</Menu.Label>
         {settings.accounts.length === 0 && (
           <Text size="xs" c="dimmed" px="sm" py={4}>
-            Aún no hay cuentas.
+            {t("No accounts yet.")}
           </Text>
         )}
         {settings.accounts.map((a) => (
@@ -49,7 +50,7 @@ export function AccountLink({ size = "xs" }: { size?: "xs" | "sm" }) {
         ))}
         <Menu.Divider />
         <Menu.Item leftSection={<IconSettings size={14} />} onClick={() => openSettings("accounts")}>
-          Administrar cuentas…
+          {t("Manage accounts…")}
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>

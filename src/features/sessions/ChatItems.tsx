@@ -1,16 +1,6 @@
 import { useState } from "react";
 import { Badge, Group, Paper, Text, UnstyledButton } from "@mantine/core";
-import {
-  IconAlertTriangle,
-  IconChevronDown,
-  IconChevronRight,
-  IconFile,
-  IconFileText,
-  IconPencil,
-  IconSearch,
-  IconTerminal2,
-  IconTool,
-} from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { modelLabel } from "../../api/sessions";
@@ -18,7 +8,9 @@ import type { ChatItem } from "../../types";
 import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
 import { DiffBlock } from "./DiffBlock";
+import { KIND_META, toolInfo } from "./toolKinds";
 import classes from "./sessions.module.css";
+import { t } from "../../i18n";
 
 type ToolUse = Extract<ChatItem, { kind: "toolUse" }>;
 type ToolResult = Extract<ChatItem, { kind: "toolResult" }>;
@@ -41,7 +33,7 @@ export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: 
           case "result":
             return item.ok ? null : (
               <Text key={index} size="xs" c="red.4" className={classes.resultLine}>
-                Claude terminó con error{item.text ? `: ${item.text}` : ""}
+                {item.text ? t("Claude ended with an error: {text}", { text: item.text }) : t("Claude ended with an error")}
               </Text>
             );
           case "notice":
@@ -67,7 +59,7 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
   const { settings } = useProjectContext();
   const catalog = settings.catalog;
   return (
-    <div className={classes.promptRow}>
+    <div className={classes.promptRow} data-prompt>
       <Paper className={`${classes.prompt} selectable`} radius="md" px="md" py={8}>
         <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
           {item.text}
@@ -103,29 +95,36 @@ function Markdown({ text }: { text: string }) {
 function ToolBlock({ use, result }: { use: ToolUse; result: ToolResult | undefined }) {
   const isEdit = use.name === "Edit" || use.name === "MultiEdit" || use.name === "Write";
   const [open, setOpen] = useState(isEdit);
-  const Icon = toolIcon(use.name);
+  const info = toolInfo(use);
+  const meta = info.kind === "builtin" ? null : KIND_META[info.kind];
+  const Icon = info.icon;
   return (
     <div className={classes.tool}>
       <UnstyledButton className={classes.toolHeader} onClick={() => setOpen((v) => !v)}>
         {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
-        <Icon size={14} />
-        <Text size="xs" fw={600}>
-          {use.name}
+        <Icon size={14} color={meta ? `var(--mantine-color-${meta.color}-4)` : undefined} />
+        {meta && (
+          <Badge size="xs" variant="light" color={meta.color}>
+            {meta.tag}
+          </Badge>
+        )}
+        <Text size="xs" fw={600} style={{ flexShrink: 0 }}>
+          {info.label}
         </Text>
         <Text size="xs" c="dimmed" truncate ff="monospace" style={{ flex: 1 }}>
           {toolSummary(use)}
         </Text>
-        {!result && <Badge size="xs" variant="light">ejecutando</Badge>}
+        {!result && <Badge size="xs" variant="light">{t("running")}</Badge>}
         {result?.isError && (
           <Badge size="xs" color="red" variant="light">
-            error
+            {t("error")}
           </Badge>
         )}
       </UnstyledButton>
       {open && (
         <div className={classes.toolBody}>
           {isEdit ? <EditPreview use={use} /> : <pre className={`${classes.code} selectable`}>{JSON.stringify(use.input, null, 2)}</pre>}
-          {result && !isEdit && <pre className={`${classes.code} ${classes.output} selectable`}>{result.content || "(sin salida)"}</pre>}
+          {result && !isEdit && <pre className={`${classes.code} ${classes.output} selectable`}>{result.content || t("(no output)")}</pre>}
           {result?.isError && isEdit && <pre className={`${classes.code} ${classes.output}`}>{result.content}</pre>}
         </div>
       )}
@@ -154,15 +153,7 @@ function EditPreview({ use }: { use: ToolUse }) {
 /** One-line description of a tool call. */
 function toolSummary(use: ToolUse): string {
   const input = use.input as Record<string, unknown>;
-  const value = input.file_path ?? input.command ?? input.pattern ?? input.path ?? input.url ?? input.description ?? "";
+  const value =
+    input.file_path ?? input.command ?? input.pattern ?? input.path ?? input.url ?? input.query ?? input.description ?? input.args ?? "";
   return String(value);
-}
-
-/** Icon for a tool name. */
-function toolIcon(name: string) {
-  if (name === "Bash") return IconTerminal2;
-  if (name === "Read") return IconFileText;
-  if (name === "Edit" || name === "MultiEdit" || name === "Write") return IconPencil;
-  if (name === "Grep" || name === "Glob") return IconSearch;
-  return IconTool;
 }

@@ -33,6 +33,15 @@ pub struct AppSettings {
     pub disabled_models: Vec<String>,
     #[serde(default)]
     pub default_model: Option<String>,
+    /// App (macOS) or command used by "Abrir en editor"; empty means WebStorm.
+    #[serde(default)]
+    pub editor: Option<String>,
+    /// When to notify that a session finished: "background" (default), "always" or "off".
+    #[serde(default)]
+    pub notifications: Option<String>,
+    /// UI language: "auto" (follow the OS, default) or a supported code such as "en" or "es".
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -43,6 +52,9 @@ impl Default for AppSettings {
             catalog_updated_at: None,
             disabled_models: Vec::new(),
             default_model: None,
+            editor: None,
+            notifications: None,
+            language: None,
         }
     }
 }
@@ -140,6 +152,40 @@ pub struct Session {
     pub base_branches: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub last_model: Option<String>,
+    /// Messages sent while Claude was working; they go out together when the turn ends.
+    #[serde(default)]
+    pub pending: Vec<PendingMessage>,
+    /// Permission prompts and questions Claude is waiting on right now.
+    #[serde(default)]
+    pub approvals: Vec<ApprovalRequest>,
+    /// What the user allowed "always" in this session (a tool name, or `Bash:<command>`).
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+}
+
+/// Something Claude Code needs the user to decide: a tool permission or an AskUserQuestion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalRequest {
+    pub id: String,
+    pub tool_name: String,
+    pub input: serde_json::Value,
+    pub at: DateTime<Utc>,
+}
+
+/// A message waiting for the current turn to finish (like Claude Code's queued input).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingMessage {
+    pub id: String,
+    /// What the user typed, shown in the chat.
+    pub text: String,
+    /// Text sent to Claude (includes the list of attached files).
+    pub prompt: String,
+    pub model: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<String>,
+    pub at: DateTime<Utc>,
 }
 
 fn default_version() -> u32 {

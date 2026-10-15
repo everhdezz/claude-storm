@@ -4,9 +4,9 @@ import { call } from "./tauri";
 export const PROCESS_LOG = "process-log";
 export const PROCESS_STATUS = "process-status";
 
-/** Starts a configured repo command. */
-export function startCommand(projectId: string, repoId: string, commandId: string): Promise<ProcessInfo> {
-  return call("start_command", { projectId, repoId, commandId });
+/** Starts a configured repo command, inside a session's worktree when `sessionId` is given. */
+export function startCommand(projectId: string, repoId: string, commandId: string, sessionId: string | null = null): Promise<ProcessInfo> {
+  return call("start_command", { projectId, repoId, commandId, sessionId });
 }
 
 /** Stops a process and its whole tree. */

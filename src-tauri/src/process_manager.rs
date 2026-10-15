@@ -41,6 +41,9 @@ pub struct ProcessInfo {
     pub command_id: String,
     pub label: String,
     pub command: String,
+    pub cwd: String,
+    pub session_id: Option<String>,
+    pub started_by: Option<String>,
     pub long_running: bool,
     pub status: ProcessStatus,
     pub pid: Option<u32>,
@@ -76,6 +79,10 @@ pub struct SpawnRequest {
     pub label: String,
     pub command: String,
     pub cwd: String,
+    /// Isolated session whose worktree is the cwd, if any.
+    pub session_id: Option<String>,
+    /// Session whose Claude started the process through MCP; None when the user started it.
+    pub started_by: Option<String>,
     pub long_running: bool,
     pub port: Option<u16>,
 }
@@ -171,6 +178,9 @@ impl ProcessManager {
             command_id: req.command_id,
             label: req.label,
             command: req.command.clone(),
+            cwd: req.cwd.clone(),
+            session_id: req.session_id,
+            started_by: req.started_by,
             long_running: req.long_running,
             status: ProcessStatus::Running,
             pid: Some(tree.pid()),
@@ -389,6 +399,8 @@ mod integration {
                     label: "dev".into(),
                     command: "printf '\\033[32mhello\\033[0m\\n'; echo oops >&2; sleep 30".into(),
                     cwd: std::env::temp_dir().to_string_lossy().to_string(),
+                    session_id: None,
+                    started_by: None,
                     long_running: true,
                     port: None,
                 },
@@ -399,7 +411,8 @@ mod integration {
         wait_for(&handle, "stderr", |m| m.logs(&info.id).iter().any(|l| l.text == "oops" && l.stream == "stderr")).await;
         assert!(manager.spawn(&handle, SpawnRequest {
             project_id: "p".into(), repo_id: "r".into(), command_id: "c".into(), label: "dev".into(),
-            command: "true".into(), cwd: "/".into(), long_running: false, port: None,
+            command: "true".into(), cwd: "/".into(), session_id: None,
+                    started_by: None, long_running: false, port: None,
         }).is_err(), "duplicate start must be rejected");
 
         manager.stop(&handle, &info.id).await.unwrap();
@@ -425,6 +438,8 @@ mod integration {
                     label: "echo".into(),
                     command: "echo ok".into(),
                     cwd: std::env::temp_dir().to_string_lossy().to_string(),
+                    session_id: None,
+                    started_by: None,
                     long_running: false,
                     port: None,
                 },

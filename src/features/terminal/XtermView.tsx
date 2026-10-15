@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { closeTerminal, openTerminal, resizeTerminal, writeTerminal } from "../../api/terminals";
 import { notifyError } from "../../hooks/notify";
+import { t } from "../../i18n";
 
 interface XtermViewProps {
   projectId: string;
@@ -59,7 +60,7 @@ export function XtermView({ projectId, cwd, visible, onTitle, onExit }: XtermVie
         idRef.current = info.id;
         callbacks.current.onTitle(info.title);
       })
-      .catch((err) => notifyError(err, "No se pudo abrir la terminal"));
+      .catch((err) => notifyError(err, t("Could not open the terminal")));
 
     const input = term.onData((data) => {
       if (idRef.current) writeTerminal(idRef.current, data).catch(() => undefined);

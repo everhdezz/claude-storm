@@ -9,6 +9,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-focus",
+    "core:window:allow-set-badge-count",
+    "core:window:allow-request-user-attention",
     "core:window:allow-set-title",
     "dialog:default",
     "opener:default",

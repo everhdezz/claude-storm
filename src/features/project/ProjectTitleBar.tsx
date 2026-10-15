@@ -7,6 +7,7 @@ import { notifyError } from "../../hooks/notify";
 import type { ProjectSummary } from "../../types";
 import { ProjectAvatar } from "../welcome/ProjectAvatar";
 import classes from "./titlebar.module.css";
+import { t } from "../../i18n";
 
 const IS_MAC = navigator.userAgent.includes("Mac");
 
@@ -30,7 +31,7 @@ export function ProjectTitleBar({ projectId, projectName, color, onSettings }: P
     try {
       await openProjectWindow(id);
     } catch (err) {
-      notifyError(err, "No se pudo abrir el proyecto");
+      notifyError(err, t("Could not open the project"));
     }
   }
 
@@ -57,13 +58,13 @@ export function ProjectTitleBar({ projectId, projectName, color, onSettings }: P
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Label>Proyectos recientes</Menu.Label>
+          <Menu.Label>{t("Recent projects")}</Menu.Label>
           {projects.map((p) => (
             <Menu.Item
               key={p.id}
               disabled={p.id === projectId}
               leftSection={<ProjectAvatar name={p.name} size={18} />}
-              rightSection={p.isOpen && p.id !== projectId ? <Text size="xs" c="dimmed">abierto</Text> : undefined}
+              rightSection={p.isOpen && p.id !== projectId ? <Text size="xs" c="dimmed">{t("open")}</Text> : undefined}
               onClick={() => open(p.id)}
             >
               <Text size="sm" truncate>
@@ -78,13 +79,13 @@ export function ProjectTitleBar({ projectId, projectName, color, onSettings }: P
           ))}
           <Menu.Divider />
           <Menu.Item leftSection={<IconFolders size={14} />} onClick={() => focusWelcomeWindow()}>
-            Todos los proyectos…
+            {t("All projects…")}
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
       <div style={{ flex: 1 }} data-tauri-drag-region />
-      <Tooltip label="Settings">
-        <ActionIcon variant="subtle" color="gray" onClick={onSettings} aria-label="Settings">
+      <Tooltip label={t("Settings")}>
+        <ActionIcon variant="subtle" color="gray" onClick={onSettings} aria-label={t("Settings")}>
           <IconSettings size={18} stroke={1.6} />
         </ActionIcon>
       </Tooltip>

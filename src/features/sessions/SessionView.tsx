@@ -21,8 +21,15 @@ import { Composer } from "./Composer";
 import { DiffModal } from "./DiffModal";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { useSessionChat } from "./useSessionChat";
+import { WorktreeActions } from "./WorktreeActions";
+import { CapabilitySummary } from "./CapabilitySummary";
+import { ServeBanner } from "./ServeBanner";
+import { PendingQueue } from "./PendingQueue";
+import { ApprovalPrompts } from "./ApprovalPrompts";
+import { StickyPrompt } from "./StickyPrompt";
 import classes from "./sessions.module.css";
 import projectClasses from "../project/project.module.css";
+import { t } from "../../i18n";
 
 /** Center island for a selected session: conversation, branch actions and composer. */
 export function SessionView() {
@@ -32,6 +39,8 @@ export function SessionView() {
   const session = sessions.find((s) => s.id === sessionId);
   const { items, streaming, loading } = useSessionChat(sessionId);
   const [diffOpen, setDiffOpen] = useState(false);
+  const [injected, setInjected] = useState<{ text: string; seq: number } | null>(null);
+  useEffect(() => setInjected(null), [sessionId]);
   const viewport = useRef<HTMLDivElement>(null);
   const previousStatus = useRef(session?.status);
 
@@ -48,7 +57,7 @@ export function SessionView() {
   if (!session) {
     return (
       <Center style={{ flex: 1 }}>
-        {sessions.length === 0 ? <Loader size="sm" /> : <Text c="dimmed">La sesión no existe.</Text>}
+        {sessions.length === 0 ? <Loader size="sm" /> : <Text c="dimmed">{t("This session does not exist.")}</Text>}
       </Center>
     );
   }
@@ -57,49 +66,51 @@ export function SessionView() {
   const isolated = session.mode === "isolated";
 
   async function send(prompt: string, model: string | null, attachments: string[]) {
-    const conflicts = conflictingSessions(session!, sessions);
+    const conflicts = isBusy(session!) ? [] : conflictingSessions(session!, sessions);
     if (conflicts.length > 0) {
       const ok = await confirm(
-        "Otra sesión directa está trabajando en los mismos repos",
-        `${conflicts.map((s) => `«${s.title}»`).join(", ")} está editando esos repos ahora mismo. Pueden pisarse cambios.`,
-        "Enviar de todos modos",
+        t("Another direct session is working on the same repos"),
+        t("{sessions} is editing those repos right now. Changes may overwrite each other.", { sessions: conflicts.map((s) => `«${s.title}»`).join(", ") }),
+        t("Send anyway"),
       );
       if (!ok) return;
     }
     try {
       await sendSessionPrompt(session!.id, prompt, model, attachments);
     } catch (err) {
-      notifyError(err, "No se pudo enviar");
+      notifyError(err, t("Could not send"));
     }
   }
 
   async function commit() {
     try {
       const done = await sessionCommit(session!.id, session!.title);
-      notifySuccess(done.length ? `Commit en ${done.join(", ")}` : "No había cambios para commitear");
+      notifySuccess(done.length ? t("Committed in {repos}", { repos: done.join(", ") }) : t("There were no changes to commit"));
     } catch (err) {
-      notifyError(err, "No se pudo hacer commit");
+      notifyError(err, t("Could not commit"));
     }
   }
 
   function merge() {
     modals.openConfirmModal({
-      title: "Merge a la rama base",
+      title: t("Merge into the base branch"),
       centered: true,
       children: (
         <Text size="sm">
-          Se hará <code>git merge --no-ff {session!.branch}</code> en cada repo, sobre su rama base (
-          {Object.values(session!.baseBranches).join(", ")}). El repo principal debe estar en esa rama.
+          {t("Runs {command} in each repo, on its base branch ({bases}). The main checkout must be on that branch.", {
+            command: `git merge --no-ff ${session!.branch}`,
+            bases: Object.values(session!.baseBranches).join(", "),
+          })}
         </Text>
       ),
-      labels: { confirm: "Hacer merge", cancel: "Cancelar" },
+      labels: { confirm: t("Merge"), cancel: t("Cancel") },
       onConfirm: async () => {
         try {
           const merged = await sessionMerge(session!.id);
-          notifySuccess(`Merge: ${merged.join(" · ")}`);
+          notifySuccess(t("Merged: {repos}", { repos: merged.join(" · ") }));
           refreshGit();
         } catch (err) {
-          notifyError(err, "No se pudo hacer merge");
+          notifyError(err, t("Could not merge"));
         }
       },
     });
@@ -107,17 +118,17 @@ export function SessionView() {
 
   function removeWorktrees(deleteBranch: boolean) {
     modals.openConfirmModal({
-      title: deleteBranch ? "Borrar worktree y rama" : "Borrar worktree",
+      title: deleteBranch ? t("Delete worktree and branch") : t("Delete worktree"),
       centered: true,
       children: (
         <Text size="sm">
           {deleteBranch
-            ? `Se borran las carpetas de trabajo y la rama ${session!.branch}. Los cambios sin merge se pierden.`
-            : `Se borran las carpetas de trabajo; la rama ${session!.branch} se conserva.`}{" "}
-          La sesión quedará archivada.
+            ? t("The working folders and the branch {branch} are deleted. Unmerged changes are lost.", { branch: session!.branch ?? "" })
+            : t("The working folders are deleted; the branch {branch} is kept.", { branch: session!.branch ?? "" })}{" "}
+          {t("The session will be archived.")}
         </Text>
       ),
-      labels: { confirm: "Borrar", cancel: "Cancelar" },
+      labels: { confirm: t("Delete"), cancel: t("Cancel") },
       confirmProps: { color: "red" },
       onConfirm: () =>
         sessionRemoveWorktrees(session!.id, deleteBranch)
@@ -137,7 +148,7 @@ export function SessionView() {
             <SessionStatusBadge session={session} />
           </Group>
           <Group gap={6} mt={2} wrap="nowrap">
-            <Tooltip label="Modelo">
+            <Tooltip label={t("Model")}>
               <Badge size="xs" variant="default">
                 {sessionModelLabel(session, account, settings)}
               </Badge>
@@ -147,6 +158,7 @@ export function SessionView() {
                 {n}
               </Badge>
             ))}
+            <CapabilitySummary items={items} />
             {isolated && (
               <Group gap={4} wrap="nowrap">
                 <IconGitBranch size={12} />
@@ -158,35 +170,36 @@ export function SessionView() {
           </Group>
         </div>
         <Group gap={4} wrap="nowrap">
-          <Tooltip label={isolated ? "Diff contra la rama base" : "Cambios sin commitear"}>
-            <ActionIcon variant="subtle" color="gray" onClick={() => setDiffOpen(true)} aria-label="Ver diff">
+          <Tooltip label={isolated ? t("Diff against the base branch") : t("Uncommitted changes")}>
+            <ActionIcon variant="subtle" color="gray" onClick={() => setDiffOpen(true)} aria-label={t("View diff")}>
               <IconFileDiff size={17} />
             </ActionIcon>
           </Tooltip>
           {isolated && (
             <>
-              <Tooltip label="Commit en la rama de la sesión">
+              <WorktreeActions session={session} />
+              <Tooltip label={t("Commit on the session branch")}>
                 <ActionIcon variant="subtle" color="gray" onClick={commit} disabled={isBusy(session)} aria-label="Commit">
                   <IconGitCommit size={17} />
                 </ActionIcon>
               </Tooltip>
-              <Tooltip label="Merge a la rama base">
+              <Tooltip label={t("Merge into the base branch")}>
                 <ActionIcon variant="subtle" color="gray" onClick={merge} disabled={isBusy(session)} aria-label="Merge">
                   <IconGitMerge size={17} />
                 </ActionIcon>
               </Tooltip>
               <Menu position="bottom-end" withinPortal>
                 <Menu.Target>
-                  <ActionIcon variant="subtle" color="gray" aria-label="Más">
+                  <ActionIcon variant="subtle" color="gray" aria-label={t("More")}>
                     <IconDots size={17} />
                   </ActionIcon>
                 </Menu.Target>
                 <Menu.Dropdown>
                   <Menu.Item leftSection={<IconTrash size={14} />} onClick={() => removeWorktrees(false)}>
-                    Borrar worktree (conservar rama)
+                    {t("Delete worktree (keep branch)")}
                   </Menu.Item>
                   <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => removeWorktrees(true)}>
-                    Borrar worktree y rama
+                    {t("Delete worktree and branch")}
                   </Menu.Item>
                 </Menu.Dropdown>
               </Menu>
@@ -194,6 +207,9 @@ export function SessionView() {
           )}
         </Group>
       </div>
+      <ServeBanner session={session} />
+      <div className={classes.threadWrap}>
+      <StickyPrompt viewport={viewport} items={items} />
       <ScrollArea style={{ flex: 1 }} viewportRef={viewport} type="auto">
         {loading ? (
           <Center py="xl">
@@ -209,14 +225,20 @@ export function SessionView() {
         )}
         {session.status === "interrupted" && (
           <Text size="xs" c="yellow.4" ta="center" pb="md">
-            La sesión quedó interrumpida. Escribe un mensaje (por ejemplo «continúa») para reanudarla.
+            {t("The session was interrupted. Write a message (for example “continue”) to resume it.")}
           </Text>
         )}
       </ScrollArea>
+      </div>
       <div className={classes.composerWrap}>
+        <ApprovalPrompts session={session} />
+        <PendingQueue session={session} onEdit={(text) => setInjected((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }))} />
         <Composer
           key={session.id}
-          placeholder={session.status === "queued" ? "En cola…" : "Continúa la conversación…"}
+          injected={injected}
+          placeholder={
+            isBusy(session) ? t("Write your next message; it is queued and sent when Claude finishes…") : t("Continue the conversation…")
+          }
           defaultModel={session.model}
           context={PERMISSION_OPTIONS.find((o) => o.value === session.permissionMode)?.label ?? session.permissionMode}
           busy={isBusy(session)}

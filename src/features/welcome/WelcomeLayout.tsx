@@ -1,14 +1,16 @@
 import { ActionIcon, Text } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { NavLink, Outlet } from "react-router";
+import { APP_VERSION, channelLabel } from "../../version";
 import classes from "./welcome.module.css";
+import { t } from "../../i18n";
 
 interface NavEntry {
   to: string;
   label: string;
 }
 
-const NAV: NavEntry[] = [{ to: "/", label: "Proyectos" }];
+const NAV: NavEntry[] = [{ to: "/", label: t("Projects") }];
 
 /** Two-column JetBrains-like welcome shell: navigation on the left, active pane on the right. */
 export function WelcomeLayout() {
@@ -19,10 +21,10 @@ export function WelcomeLayout() {
           <div className={classes.logo}>CS</div>
           <div>
             <Text fw={600} lh={1.2}>
-              claude-storm
+              ClaudeStorm
             </Text>
             <Text size="xs" c="dimmed">
-              0.1.0
+              v{APP_VERSION} · {channelLabel()}
             </Text>
           </div>
         </div>
@@ -37,7 +39,7 @@ export function WelcomeLayout() {
           </NavLink>
         ))}
         <div style={{ flex: 1 }} />
-        <ActionIcon variant="subtle" color="gray" size="lg" ml={6} aria-label="Ajustes">
+        <ActionIcon variant="subtle" color="gray" size="lg" ml={6} aria-label={t("Settings")}>
           <IconSettings size={20} stroke={1.6} />
         </ActionIcon>
       </aside>

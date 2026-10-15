@@ -18,8 +18,9 @@ import {
   IconPlayerPlay,
   IconPlayerStop,
   IconTerminal2,
+  IconCode,
   IconTrash,
-  IconWand,
+  IconSettings,
 } from "@tabler/icons-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { isActive, processKey, stopProcess } from "../../api/processes";
@@ -27,21 +28,24 @@ import { getProject } from "../../api/projects";
 import { redetectRepo, removeRepo, saveRepoLayout } from "../../api/repos";
 import { FrameworkIcon } from "../../components/FrameworkIcon";
 import { GitBadge } from "../../components/GitBadge";
+import { BranchesMenu } from "./BranchesMenu";
 import { Island } from "../../components/ide/Island";
 import { notifyError } from "../../hooks/notify";
+import { openInEditor } from "../../api/settings";
 import type { Framework, LayoutItem, Repo, RepoCommand } from "../../types";
 import { ProcessStatusDot } from "../processes/ProcessStatusDot";
 import { useRunCommand } from "../processes/useRunCommand";
 import { useProjectContext } from "../project/ProjectContext";
-import { EditRepoModal } from "../repos/EditRepoModal";
+import { RepoSettingsModal } from "../repos/RepoSettingsModal";
 import { useAddFolder } from "../repos/useAddRepos";
 import classes from "./projects-tool.module.css";
 import { applyMove, flatten, INDENT, moveRepoToGroup, patchGroup, project as projectDrop, type FlatItem, ungroup } from "./repoTree";
+import { t } from "../../i18n";
 
 const NODE_FRAMEWORKS: Framework[] = ["vite", "next", "react", "expo", "node"];
 
 /** Left tool window: repos and one-level groups, reorderable by drag and drop. */
-export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
+export function ProjectsTool({ style, onMinimize }: { style?: React.CSSProperties; onMinimize?: () => void }) {
   const { project, ui } = useProjectContext();
   const addRepo = useAddFolder(project.id);
   const [expanded, setExpanded] = useState<string[]>(ui.initial.expandedRepos ?? []);
@@ -53,7 +57,7 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
       return next;
     });
   }
-  const [editing, setEditing] = useState<Repo | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutItem[]>(project.layout);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -72,12 +76,12 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
 
   function persist(next: LayoutItem[]) {
     setLayout(next);
-    saveRepoLayout(project.id, next).catch((err) => notifyError(err, "No se pudo guardar el orden"));
+    saveRepoLayout(project.id, next).catch((err) => notifyError(err, t("Could not save the order")));
   }
 
   function newGroup() {
     const id = crypto.randomUUID();
-    persist([{ kind: "group", id, name: "Nuevo grupo", collapsed: false, repoIds: [] }, ...layout]);
+    persist([{ kind: "group", id, name: t("New group"), collapsed: false, repoIds: [] }, ...layout]);
     setRenamingGroup(id);
   }
 
@@ -108,15 +112,16 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
     <Island
       title={project.name}
       style={style}
+      onMinimize={onMinimize}
       actions={
         <>
-          <Tooltip label="Nuevo grupo">
-            <ActionIcon variant="subtle" color="gray" size="sm" onClick={newGroup} aria-label="Nuevo grupo">
+          <Tooltip label={t("New group")}>
+            <ActionIcon variant="subtle" color="gray" size="sm" onClick={newGroup} aria-label={t("New group")}>
               <IconFolderPlus size={15} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label="Agregar repo">
-            <ActionIcon variant="subtle" color="gray" size="sm" onClick={addRepo} aria-label="Agregar repo">
+          <Tooltip label={t("Add repo")}>
+            <ActionIcon variant="subtle" color="gray" size="sm" onClick={addRepo} aria-label={t("Add repo")}>
               <IconPlus size={15} />
             </ActionIcon>
           </Tooltip>
@@ -126,7 +131,7 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
       <ScrollArea style={{ flex: 1 }} type="auto">
         {project.repos.length === 0 && groups.length === 0 ? (
           <Text size="sm" c="dimmed" px="md" py="xs">
-            Sin repos. Usa «Agregar repo».
+            {t("No repos. Use “Add repo”.")}
           </Text>
         ) : (
           <DndContext
@@ -167,7 +172,7 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
                       repo={repo}
                       open={expanded.includes(repo.id)}
                       onToggle={() => toggleRepo(repo.id)}
-                      onEdit={() => setEditing(repo)}
+                      onEdit={() => setEditingId(repo.id)}
                       groups={groups}
                       currentGroupId={item.parentId?.slice("group:".length) ?? null}
                       onMove={(groupId) => persist(moveRepoToGroup(layout, repo.id, groupId))}
@@ -179,7 +184,11 @@ export function ProjectsTool({ style }: { style?: React.CSSProperties }) {
           </DndContext>
         )}
       </ScrollArea>
-      <EditRepoModal projectId={project.id} repo={editing} onClose={() => setEditing(null)} />
+      <RepoSettingsModal
+        projectId={project.id}
+        repo={project.repos.find((r) => r.id === editingId) ?? null}
+        onClose={() => setEditingId(null)}
+      />
     </Island>
   );
 }
@@ -249,16 +258,16 @@ function GroupRow({ group, renaming, onRename, onRenameDone, onToggle, onUngroup
       <div className={classes.rowActions} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
-            <ActionIcon variant="subtle" color="gray" size="sm" aria-label="Acciones del grupo">
+            <ActionIcon variant="subtle" color="gray" size="sm" aria-label={t("Group actions")}>
               <IconDots size={14} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Item leftSection={<IconPencil size={13} />} onClick={onRename}>
-              Renombrar
+              {t("Rename")}
             </Menu.Item>
             <Menu.Item leftSection={<IconFolderX size={13} />} onClick={onUngroup}>
-              Desagrupar
+              {t("Ungroup")}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
@@ -279,7 +288,7 @@ interface RepoNodeProps {
 }
 
 function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove }: RepoNodeProps) {
-  const { project, gitStatuses, gitErrors, processes, openTerminalAt } = useProjectContext();
+  const { project, gitStatuses, gitErrors, processes, openTerminalAt, settings } = useProjectContext();
   const run = useRunCommand();
   const procs = repo.commands.map((c) => processes[processKey(repo.id, c.id)]).filter((p) => !!p);
   const isNode = NODE_FRAMEWORKS.includes(repo.framework);
@@ -292,7 +301,7 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
       const fresh = (await getProject(project.id)).repos.find((r) => r.id === repo.id);
       const detected = fresh?.commands.find((c) => c.longRunning);
       if (fresh && detected) await run(fresh, detected);
-      else notifyError("No se encontró un script dev/start en package.json", "Sin servidor de pruebas");
+      else notifyError(t("No dev/start script found in package.json"), t("No dev server"));
     } catch (err) {
       notifyError(err);
     }
@@ -300,22 +309,12 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
 
   function confirmRemove() {
     modals.openConfirmModal({
-      title: `Quitar ${repo.name} del proyecto`,
+      title: t("Remove {repo} from the project", { repo: repo.name }),
       centered: true,
-      children: <Text size="sm">La carpeta en disco no se toca.</Text>,
-      labels: { confirm: "Quitar", cancel: "Cancelar" },
+      children: <Text size="sm">{t("The folder on disk is not touched.")}</Text>,
+      labels: { confirm: t("Remove"), cancel: t("Cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => removeRepo(project.id, repo.id).catch((err) => notifyError(err)),
-    });
-  }
-
-  function confirmRedetect() {
-    modals.openConfirmModal({
-      title: "Volver a detectar framework",
-      centered: true,
-      children: <Text size="sm">Se reemplazarán los comandos actuales por los detectados.</Text>,
-      labels: { confirm: "Detectar", cancel: "Cancelar" },
-      onConfirm: () => redetectRepo(project.id, repo.id).catch((err) => notifyError(err)),
     });
   }
 
@@ -333,7 +332,9 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
               {gitErrors[repo.id]}
             </Text>
           ) : (
-            <GitBadge status={gitStatuses[repo.id]} compact />
+            <BranchesMenu repo={repo}>
+              <GitBadge status={gitStatuses[repo.id]} compact />
+            </BranchesMenu>
           )}
         </div>
         <ProcessStatusDot processes={procs} />
@@ -348,31 +349,36 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
           )}
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
-              <ActionIcon variant="subtle" color="gray" size="sm" aria-label="Ajustes del repo">
+              <ActionIcon variant="subtle" color="gray" size="sm" aria-label={t("Repo settings")}>
                 <IconDots size={14} />
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown>
-              {repo.commands.length > 0 && <Menu.Label>Ejecutar</Menu.Label>}
+              {repo.commands.length > 0 && <Menu.Label>{t("Run")}</Menu.Label>}
               {repo.commands.map((c) => (
                 <Menu.Item key={c.id} leftSection={<IconPlayerPlay size={13} />} onClick={() => run(repo, c)}>
                   {c.label}
                 </Menu.Item>
               ))}
               {repo.commands.length > 0 && <Menu.Divider />}
-              <Menu.Item leftSection={<IconPencil size={13} />} onClick={onEdit}>
-                Editar comandos
+              <Menu.Item leftSection={<IconSettings size={13} />} onClick={onEdit}>
+                {t("Configure repo…")}
               </Menu.Item>
-              <Menu.Item leftSection={<IconWand size={13} />} onClick={confirmRedetect}>
-                Volver a detectar
+              <Menu.Item leftSection={<IconCode size={13} />} onClick={() => openInEditor(repo.path).catch((err) => notifyError(err))}>
+                {t("Open in {editor}", { editor: settings.editor })}
               </Menu.Item>
               <Menu.Item leftSection={<IconTerminal2 size={13} />} onClick={() => openTerminalAt(repo.path)}>
-                Abrir terminal aquí
+                {t("Open terminal here")}
               </Menu.Item>
               <Menu.Item leftSection={<IconFolderOpen size={13} />} onClick={() => revealItemInDir(repo.path)}>
-                Mostrar en carpeta
+                {t("Show in folder")}
               </Menu.Item>
-              {(groups.length > 0 || currentGroupId) && <Menu.Label>Mover a</Menu.Label>}
+              {(groups.length > 0 || currentGroupId) && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Label>{t("Move to")}</Menu.Label>
+                </>
+              )}
               {groups
                 .filter((g) => g.id !== currentGroupId)
                 .map((g) => (
@@ -382,12 +388,12 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
                 ))}
               {currentGroupId && (
                 <Menu.Item leftSection={<IconFolderX size={13} />} onClick={() => onMove(null)}>
-                  Sacar del grupo
+                  {t("Remove from group")}
                 </Menu.Item>
               )}
               <Menu.Divider />
               <Menu.Item color="red" leftSection={<IconTrash size={13} />} onClick={confirmRemove}>
-                Quitar del proyecto
+                {t("Remove from project")}
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
@@ -430,7 +436,7 @@ function CommandToggle({ repo, command, onRun, label }: CommandToggleProps) {
   const proc = processes[processKey(repo.id, command.id)];
   const active = isActive(proc);
   return (
-    <Tooltip label={label ? (active ? `Detener ${label}` : label) : `${active ? "Detener" : "Ejecutar"} ${command.label}`} openDelay={300}>
+    <Tooltip label={label ? (active ? t("Stop {command}", { command: label }) : label) : active ? t("Stop {command}", { command: command.label }) : t("Run {command}", { command: command.label })} openDelay={300}>
       <ActionIcon
         variant="subtle"
         color={active ? "red" : "teal"}
@@ -443,7 +449,7 @@ function CommandToggle({ repo, command, onRun, label }: CommandToggleProps) {
             revealService(proc.id);
           } else onRun(repo, command);
         }}
-        aria-label={`${active ? "Detener" : "Ejecutar"} ${command.label}`}
+        aria-label={active ? t("Stop {command}", { command: command.label }) : t("Run {command}", { command: command.label })}
       >
         {active ? <IconPlayerStop size={14} /> : <IconPlayerPlay size={14} />}
       </ActionIcon>

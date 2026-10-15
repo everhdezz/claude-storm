@@ -3,7 +3,9 @@ mod commands;
 mod detect;
 mod error;
 mod git;
+mod i18n;
 mod login;
+mod mcp;
 mod models;
 mod proc_tree;
 mod process_manager;
@@ -37,12 +39,15 @@ pub fn run() {
         .manage(UsageService::default())
         .manage(SessionManager::default())
         .manage(LoginManager::default())
+        .manage(mcp::McpState::default())
         .setup(|app| {
             std::thread::spawn(|| {
                 shell_env::login_env();
             });
             let dir = app.path().app_data_dir()?;
+            app.state::<UsageService>().load_from(&dir);
             app.manage(Store::load(dir)?);
+            mcp::start(app.handle().clone());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let store = handle.state::<Store>();
@@ -92,6 +97,19 @@ pub fn run() {
             commands::repos::redetect_repo,
             commands::repos::save_repo_layout,
             commands::git::git_status,
+            commands::git::git_branches,
+            commands::git::git_checkout,
+            commands::git::git_create_branch,
+            commands::git::git_rename_branch,
+            commands::git::git_delete_branch,
+            commands::git::git_merge,
+            commands::git::git_fetch,
+            commands::git::git_pull,
+            commands::settings::set_editor,
+            commands::settings::set_language,
+            i18n::set_ui_locale,
+            commands::settings::set_notifications,
+            commands::settings::open_in_editor,
             commands::processes::start_command,
             commands::processes::stop_process,
             commands::processes::list_processes,
@@ -125,6 +143,11 @@ pub fn run() {
             commands::sessions::archive_session,
             commands::sessions::delete_session,
             commands::sessions::session_diff,
+            commands::sessions::session_folders,
+            commands::sessions::save_pasted_file,
+            commands::sessions::session_send_now,
+            commands::sessions::session_remove_pending,
+            commands::sessions::session_answer_approval,
             commands::sessions::session_commit,
             commands::sessions::session_merge,
             commands::sessions::session_remove_worktrees,

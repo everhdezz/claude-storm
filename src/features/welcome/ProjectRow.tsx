@@ -4,6 +4,7 @@ import type { ProjectSummary } from "../../types";
 import { relativeTime } from "../../utils/time";
 import { ProjectAvatar } from "./ProjectAvatar";
 import classes from "./welcome.module.css";
+import { t, tn } from "../../i18n";
 
 interface ProjectRowProps {
   project: ProjectSummary;
@@ -16,8 +17,8 @@ interface ProjectRowProps {
 
 /** Builds the secondary line: repo count and last opened time. */
 function describe(project: ProjectSummary): string {
-  const repos = `${project.repoCount} ${project.repoCount === 1 ? "repo" : "repos"}`;
-  return `${repos} · abierto ${relativeTime(project.lastOpenedAt)}`;
+  const repos = tn(project.repoCount, "{count} repo", "{count} repos");
+  return `${repos} · ${project.lastOpenedAt ? t("opened {when}", { when: relativeTime(project.lastOpenedAt) }) : t("never opened")}`;
 }
 
 /** One project entry in the welcome list; click opens it in its own window. */
@@ -38,7 +39,7 @@ export function ProjectRow({ project, selected, onSelect, onOpen, onRename, onDe
           </Text>
           {project.isOpen && (
             <Badge size="xs" variant="light" color="teal">
-              abierto
+              {t("open")}
             </Badge>
           )}
         </Group>
@@ -57,7 +58,7 @@ export function ProjectRow({ project, selected, onSelect, onOpen, onRename, onDe
             className={classes.rowMenu}
             variant="subtle"
             color="gray"
-            aria-label="Acciones"
+            aria-label={t("Actions")}
             onClick={(e) => e.stopPropagation()}
           >
             <IconDotsVertical size={18} />
@@ -65,10 +66,10 @@ export function ProjectRow({ project, selected, onSelect, onOpen, onRename, onDe
         </Menu.Target>
         <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
           <Menu.Item leftSection={<IconPencil size={14} />} onClick={() => onRename(project)}>
-            Renombrar
+            {t("Rename")}
           </Menu.Item>
           <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => onDelete(project)}>
-            Quitar de la lista
+            {t("Remove from the list")}
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>

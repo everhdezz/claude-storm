@@ -89,7 +89,7 @@ pub fn rename_project(app: AppHandle, store: State<Store>, id: String, name: Str
         Ok(())
     })?;
     if let Some(window) = app.get_webview_window(&project_window_label(&id)) {
-        let _ = window.set_title(&format!("{name} — claude-storm"));
+        let _ = window.set_title(&format!("{name} — ClaudeStorm"));
     }
     notify_projects_changed(&app);
     Ok(())

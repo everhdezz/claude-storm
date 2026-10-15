@@ -13,7 +13,7 @@ import { useSessions } from "../sessions/useSessions";
 import { SettingsModal, type SettingsSection } from "../settings/SettingsModal";
 import { useSettings } from "../settings/useSettings";
 import { ProjectsTool } from "../projects-tool/ProjectsTool";
-import { ServicesTool } from "../services/ServicesTool";
+import { RunTargetPicker, ServicesTool } from "../services/ServicesTool";
 import { StatusBar } from "../status/StatusBar";
 import { TerminalTool } from "../terminal/TerminalTool";
 import { ProjectContext } from "./ProjectContext";
@@ -23,6 +23,7 @@ import { type BottomTool, type LeftTool, useLayoutPrefs } from "./useLayoutPrefs
 import { useProject } from "./useProject";
 import { useUiState } from "./useUiState";
 import type { Project } from "../../types";
+import { t, tn } from "../../i18n";
 
 /** Root of a project window: loads the project, then renders its workspace. */
 export function ProjectPage() {
@@ -53,11 +54,12 @@ function ProjectWorkspace({ project }: { project: Project }) {
   const ui = useUiState(project.id, project.uiState);
   const git = useGitStatuses(project.repos);
   const { processes } = useProcesses(project.id);
-  const sessions = useSessions(project.id, sessionId);
   const settings = useSettings();
+  const sessions = useSessions(project.id, sessionId, settings.notifications);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
   const layout = useLayoutPrefs(ui.initial.layout, (prefs) => ui.save({ layout: prefs }));
   const [selectedService, setSelectedService] = useState<string | null>(ui.initial.selectedService ?? null);
+  const [savedRunTarget, setSavedRunTarget] = useState<string | null>(ui.initial.runTarget ?? null);
   const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
   const restored = useRef(false);
 
@@ -82,17 +84,23 @@ function ProjectWorkspace({ project }: { project: Project }) {
     ui.save({ selectedService });
   }, [selectedService, ui]);
 
+  useEffect(() => {
+    ui.save({ runTarget: savedRunTarget });
+  }, [savedRunTarget, ui]);
+
   const running = Object.values(processes).filter(isActive).length;
+  // A target whose session was archived, deleted or lost its worktree falls back to the main checkout.
+  const runTarget = sessions.some((s) => s.id === savedRunTarget && s.mode === "isolated" && !s.archived) ? savedRunTarget : null;
   const account = settings.accounts.find((a) => a.id === project.accountId) ?? null;
   const { prefs } = layout;
   const sessionsWorking = sessions.some((s) => s.status === "working");
   const topItems: StripeItem<LeftTool>[] = [
-    { id: "projects", label: "Proyectos", icon: IconFolder },
+    { id: "projects", label: t("Projects"), icon: IconFolder },
     { id: "chats", label: "Chats", icon: IconMessageCircle, badge: sessionsWorking },
   ];
   const bottomItems: StripeItem<BottomTool>[] = [
     { id: "terminal", label: "Terminal", icon: IconTerminal2 },
-    { id: "services", label: "Servicios", icon: IconPlayerPlay, badge: running > 0 },
+    { id: "services", label: t("Services"), icon: IconPlayerPlay, badge: running > 0 },
   ];
 
   function revealService(processId: string) {
@@ -122,6 +130,11 @@ function ProjectWorkspace({ project }: { project: Project }) {
         selectService: setSelectedService,
         revealService,
         openTerminalAt,
+        runTarget,
+        setRunTarget: (id) => {
+          setSavedRunTarget(id);
+          if (id) layout.showBottom("services");
+        },
       }}
     >
       <div className={ide.window}>
@@ -144,7 +157,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
             {prefs.leftTools.length > 0 && (
               <div className={ide.leftColumn} style={{ width: prefs.leftWidth }}>
                 {prefs.leftTools.includes("projects") && (
-                  <ProjectsTool style={prefs.leftTools.length > 1 ? { height: prefs.leftTopHeight, flexShrink: 0 } : { flex: 1 }} />
+                  <ProjectsTool onMinimize={() => layout.toggleLeft("projects")} style={prefs.leftTools.length > 1 ? { height: prefs.leftTopHeight, flexShrink: 0 } : { flex: 1 }} />
                 )}
                 {prefs.leftTools.length > 1 && (
                   <Splitter
@@ -155,7 +168,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
                     onChange={(leftTopHeight) => layout.resize({ leftTopHeight })}
                   />
                 )}
-                {prefs.leftTools.includes("chats") && <ChatsTool style={{ flex: 1 }} />}
+                {prefs.leftTools.includes("chats") && <ChatsTool style={{ flex: 1 }} onMinimize={() => layout.toggleLeft("chats")} />}
               </div>
             )}
             {prefs.leftTools.length > 0 && (
@@ -186,10 +199,11 @@ function ProjectWorkspace({ project }: { project: Project }) {
             request={terminalRequest}
             saved={ui.initial.terminals}
             onTabsChange={(terminals) => ui.save({ terminals })}
+            onMinimize={() => layout.toggleBottom("terminal")}
             style={{ height: prefs.bottomHeight, flexShrink: 0 }}
           />
           {prefs.bottom === "services" && (
-            <Island title="Servicios" style={{ height: prefs.bottomHeight, flexShrink: 0 }}>
+            <Island title={t("Services")} actions={<RunTargetPicker />} onMinimize={() => layout.toggleBottom("services")} style={{ height: prefs.bottomHeight, flexShrink: 0 }}>
               <ServicesTool />
             </Island>
           )}
@@ -199,7 +213,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
           projectId={project.id}
           right={
             <>
-              {running > 0 && <Text size="xs">{running} servicio(s) corriendo</Text>}
+              {running > 0 && <Text size="xs">{tn(running, "{count} service running", "{count} services running")}</Text>}
               <Text size="xs">{project.name}</Text>
             </>
           }

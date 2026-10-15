@@ -1,14 +1,15 @@
 import { Badge, Loader } from "@mantine/core";
 import type { Session, SessionStatus } from "../../types";
+import { t } from "../../i18n";
 
 const META: Record<SessionStatus, { label: string; color: string }> = {
-  idle: { label: "inactiva", color: "gray" },
-  queued: { label: "en cola", color: "violet" },
-  working: { label: "trabajando", color: "blue" },
-  waiting: { label: "esperando tu respuesta", color: "yellow" },
-  done: { label: "terminó con cambios", color: "teal" },
-  error: { label: "error", color: "red" },
-  interrupted: { label: "interrumpida", color: "orange" },
+  idle: { label: t("idle"), color: "gray" },
+  queued: { label: t("queued"), color: "violet" },
+  working: { label: t("working"), color: "blue" },
+  waiting: { label: t("waiting for you"), color: "yellow" },
+  done: { label: t("finished with changes"), color: "teal" },
+  error: { label: t("error"), color: "red" },
+  interrupted: { label: t("interrupted"), color: "orange" },
 };
 
 /** States worth surfacing; resting states (idle, waiting for the user) show nothing. */

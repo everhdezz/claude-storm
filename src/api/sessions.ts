@@ -1,5 +1,7 @@
-import type { AppSettings, CatalogModel, ChatItem, ClaudeAccount, NewSessionInput, RepoDiff, Session, WorktreeCleanup } from "../types";
-import { call } from "./tauri";
+import type { ApprovalDecision, AppSettings, CatalogModel, ChatItem, ClaudeAccount, NewSessionInput, PendingMessage, RepoDiff, Session, SessionFolder, WorktreeCleanup } from "../types";
+import { invoke } from "@tauri-apps/api/core";
+import { call, errorMessage } from "./tauri";
+import { t } from "../i18n";
 
 export const SESSION_CHANGED = "session-changed";
 export const SESSION_ITEM = "session-item";
@@ -7,10 +9,10 @@ export const SESSION_DELTA = "session-delta";
 export const SESSION_DELETED = "session-deleted";
 
 export const PERMISSION_OPTIONS = [
-  { value: "acceptEdits", label: "Aceptar ediciones" },
+  { value: "acceptEdits", label: t("Accept edits") },
   { value: "auto", label: "Auto" },
-  { value: "plan", label: "Solo planear" },
-  { value: "bypassPermissions", label: "Sin restricciones" },
+  { value: "plan", label: t("Plan only") },
+  { value: "bypassPermissions", label: t("No restrictions") },
 ];
 
 /** Lists a project's sessions. */
@@ -88,12 +90,42 @@ export function isBusy(session: Session): boolean {
 
 /** Label for a model id given Claude Code's catalog. */
 export function modelLabel(model: string | null | undefined, catalog: CatalogModel[] = []): string {
-  if (!model) return "Por defecto";
+  if (!model) return t("Default");
   return catalog.find((m) => m.id === model)?.label ?? model;
 }
 
 /** Model a session actually uses: the one Claude Code reported, else the configured fallback chain. */
 export function sessionModelLabel(session: Session, account: ClaudeAccount | null, settings: AppSettings): string {
   const model = session.lastModel ?? session.model ?? account?.defaultModel ?? settings.defaultModel;
-  return model ? modelLabel(model, settings.catalog) : "Modelo de Claude Code";
+  return model ? modelLabel(model, settings.catalog) : t("Claude Code's model");
+}
+
+/** Folders a session works in: its worktrees, or the repos themselves for direct sessions. */
+export function sessionFolders(sessionId: string): Promise<SessionFolder[]> {
+  return call("session_folders", { sessionId });
+}
+
+/** Writes a file pasted from the clipboard to disk and returns its path, ready to attach. */
+export async function savePastedFile(file: File, name = file.name): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try {
+    return await invoke<string>("save_pasted_file", bytes, { headers: { "x-file-name": encodeURIComponent(name) } });
+  } catch (err) {
+    throw new Error(errorMessage(err));
+  }
+}
+
+/** Sends the queued messages now, interrupting Claude's current turn if it is working. */
+export function sessionSendNow(sessionId: string): Promise<void> {
+  return call("session_send_now", { sessionId });
+}
+
+/** Removes a queued message and returns it (to edit it in the composer). */
+export function sessionRemovePending(sessionId: string, messageId: string): Promise<PendingMessage | null> {
+  return call("session_remove_pending", { sessionId, messageId });
+}
+
+/** Answers a permission prompt or question Claude is waiting on. */
+export function sessionAnswerApproval(sessionId: string, approvalId: string, decision: ApprovalDecision): Promise<void> {
+  return call("session_answer_approval", { sessionId, approvalId, decision });
 }

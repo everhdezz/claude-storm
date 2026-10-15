@@ -1,6 +1,7 @@
 //! Drives `claude auth login --claudeai` in a hidden PTY for a profile, so Claude Code performs and
 //! stores the login itself. claude-storm only forwards the authorization URL and an optional pasted code.
 
+use crate::i18n::tr;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -162,19 +163,19 @@ impl LoginManager {
                 }
                 if signals.invalid_codes > seen_invalid {
                     seen_invalid = signals.invalid_codes;
-                    emit("codeInvalid", None, None, Some("El código no es válido. Cópialo completo e inténtalo otra vez.".into()), None);
+                    emit("codeInvalid", None, None, Some(tr("The code is not valid. Copy all of it and try again.", "El código no es válido. Cópialo completo e inténtalo otra vez.")), None);
                 }
                 if signals.success {
                     emit("authorized", None, None, None, None);
                     break;
                 }
                 let exited = child.try_wait().ok().flatten();
-                if let Some(reason) = signals.failure.clone().or_else(|| exited.as_ref().map(|s| format!("claude terminó (código {})", s.exit_code()))) {
+                if let Some(reason) = signals.failure.clone().or_else(|| exited.as_ref().map(|s| format!("{} ({})", tr("claude exited with code", "claude terminó con código"), s.exit_code()))) {
                     emit("failed", None, None, Some(human_error(&reason)), Some(redact(current.trim())));
                     break;
                 }
                 if started.elapsed() > TIMEOUT {
-                    emit("timeout", None, None, Some("Pasaron 5 minutos sin completar la autorización.".into()), Some(redact(current.trim())));
+                    emit("timeout", None, None, Some(tr("5 minutes passed without completing the authorization.", "Pasaron 5 minutos sin completar la autorización.")), Some(redact(current.trim())));
                     break;
                 }
             }
@@ -220,11 +221,11 @@ impl LoginManager {
 /// Plain-language version of a login failure.
 fn human_error(reason: &str) -> String {
     if reason.contains("400") {
-        "Anthropic rechazó la autorización (el código expiró o no corresponde a este intento). Reintenta el login.".into()
+        tr("Anthropic rejected the authorization (the code expired or belongs to another attempt). Retry the login.", "Anthropic rechazó la autorización (el código expiró o no corresponde a este intento). Reintenta el login.")
     } else if reason.contains("ENOTFOUND") || reason.contains("ECONN") || reason.contains("network") {
-        "No hay conexión con Anthropic. Revisa tu internet y reintenta.".into()
+        tr("Cannot reach Anthropic. Check your internet connection and retry.", "No hay conexión con Anthropic. Revisa tu internet y reintenta.")
     } else {
-        format!("El login no se completó: {reason}")
+        format!("{}: {reason}", tr("The login did not complete", "El login no se completó"))
     }
 }
 
@@ -256,7 +257,7 @@ mod tests {
     fn detects_failed_login() {
         let s = parse_login_output(&fixture("failed.raw"));
         assert_eq!(s.failure.as_deref(), Some("Request failed with status code 400"));
-        assert!(human_error("Request failed with status code 400").contains("rechazó"));
+        assert!(human_error("Request failed with status code 400").contains("rejected"));
     }
 
     #[test]

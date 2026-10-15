@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
   max-width: 860px;
   margin: 0 auto;
   padding: 20px 24px 12px;
@@ -15,13 +16,18 @@
 
 .prompt {
   max-width: 80%;
+  min-width: 0;
   background: #2e436e;
+  /* Long unbroken pastes (JSON, URLs, tokens) wrap instead of widening the whole thread. */
+  overflow-wrap: anywhere;
 }
 
 .markdown {
+  min-width: 0;
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--mantine-color-gray-2);
+  overflow-wrap: anywhere;
 }
 
 .markdown p {
@@ -48,6 +54,9 @@
 }
 
 .markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
 }
 
@@ -58,6 +67,7 @@
 }
 
 .tool {
+  min-width: 0;
   border: 1px solid var(--dh-island-border);
   border-radius: 8px;
   overflow: hidden;
@@ -89,6 +99,7 @@
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
   color: var(--mantine-color-gray-4);
 }
@@ -217,4 +228,103 @@
 .card[data-selected] {
   background: #252a35;
   border-color: var(--mantine-color-indigo-8);
+}
+
+.serveBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 8px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-teal-6) 35%, transparent);
+}
+
+.modelPicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: var(--mantine-color-gray-4);
+}
+
+.modelPicker:hover:not(:disabled) {
+  background: var(--dh-hover);
+  color: var(--mantine-color-gray-2);
+}
+
+.queue {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--mantine-color-indigo-4) 45%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-indigo-9) 18%, transparent);
+}
+
+.queueItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 4px 19px;
+}
+
+.queueItem + .queueItem {
+  border-top: 1px solid color-mix(in srgb, var(--mantine-color-indigo-4) 15%, transparent);
+}
+
+.threadWrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stickyPrompt {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: min(812px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #2e436e 88%, var(--dh-island-bg));
+  border: 1px solid color-mix(in srgb, var(--mantine-color-indigo-4) 35%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.stickyPrompt:hover {
+  background: #354d7e;
+}
+
+.stickyIcon {
+  flex-shrink: 0;
+  color: var(--mantine-color-indigo-2);
+}
+
+.approval {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--mantine-color-yellow-5) 45%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-yellow-9) 14%, var(--dh-island-bg));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+.approval[data-kind="question"] {
+  border-color: color-mix(in srgb, var(--mantine-color-indigo-4) 50%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-indigo-9) 18%, var(--dh-island-bg));
+}
+
+.approvalTarget {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }

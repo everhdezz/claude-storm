@@ -19,6 +19,9 @@ export interface ProjectContextValue {
   selectService: (processId: string) => void;
   revealService: (processId: string) => void;
   openTerminalAt: (cwd: string) => void;
+  /** Isolated session whose worktree the services run in; null runs them in the main checkout. */
+  runTarget: string | null;
+  setRunTarget: (sessionId: string | null) => void;
 }
 
 export const ProjectContext = createContext<ProjectContextValue | null>(null);

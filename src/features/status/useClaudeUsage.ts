@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { claudeUsage, claudeUsageCached, USAGE_UPDATED, type UsageSnapshot } from "../../api/usage";
 import { useTauriEvent } from "../../hooks/useTauriEvent";
+import { t } from "../../i18n";
 
 const REFRESH_MS = 10 * 60_000;
 const STALE_MS = 60 * 60_000;
@@ -48,7 +49,7 @@ export function useClaudeUsage(projectId: string, accountId: string | null) {
 export function timeUntil(iso: string | null): string | null {
   if (!iso) return null;
   const minutes = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
-  if (minutes <= 0) return "ya";
+  if (minutes <= 0) return t("now");
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
   const mins = minutes % 60;

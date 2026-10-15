@@ -1,4 +1,5 @@
-import { Stack, Text, ThemeIcon, Title } from "@mantine/core";
+import { useState } from "react";
+import { Loader, Group, Stack, Text, ThemeIcon, Title } from "@mantine/core";
 import { IconSparkles } from "@tabler/icons-react";
 import { useNavigate } from "react-router";
 import { createSession, sendSessionPrompt } from "../../api/sessions";
@@ -6,20 +7,23 @@ import { notifyError } from "../../hooks/notify";
 import { useProjectContext } from "../project/ProjectContext";
 import { Composer } from "./Composer";
 import classes from "./sessions.module.css";
+import { t, tn } from "../../i18n";
 
 /** Empty center island: "Chatea con la IA" — the first prompt opens a new session. */
 export function ChatHome() {
   const { project, sessions } = useProjectContext();
   const navigate = useNavigate();
   const othersActive = sessions.some((s) => !s.archived && (s.status === "working" || s.status === "queued"));
+  const [preparing, setPreparing] = useState(false);
 
   async function start(prompt: string, model: string | null, attachments: string[]) {
     if (project.repos.length === 0) {
-      notifyError("Agrega al menos un repo al proyecto para chatear con Claude sobre él.", "Sin repos");
+      notifyError(t("Add at least one repo to the project to chat with Claude about it."), t("No repos"));
       return;
     }
+    setPreparing(othersActive);
     try {
-      const title = (prompt.split("\n")[0] || attachments[0]?.split(/[\\/]/).pop() || "Documentos").slice(0, 60);
+      const title = (prompt.split("\n")[0] || attachments[0]?.split(/[\\/]/).pop() || t("Documents")).slice(0, 60);
       const session = await createSession(project.id, {
         title,
         repoIds: project.repos.map((r) => r.id),
@@ -29,7 +33,9 @@ export function ChatHome() {
       await sendSessionPrompt(session.id, prompt, null, attachments);
       navigate(`/project/${project.id}/session/${session.id}`);
     } catch (err) {
-      notifyError(err, "No se pudo iniciar la sesión");
+      notifyError(err, t("Could not start the session"));
+    } finally {
+      setPreparing(false);
     }
   }
 
@@ -40,17 +46,24 @@ export function ChatHome() {
           <IconSparkles size={24} />
         </ThemeIcon>
         <Title order={3} mt="sm">
-          Chatea con la IA
+          {t("Chat with AI")}
         </Title>
         <Text size="sm" c="dimmed" ta="center" maw={460}>
-          Escribe qué quieres hacer en {project.name}. Se abre una sesión nueva de Claude Code sobre{" "}
-          {project.repos.length === 1 ? "su repo" : `sus ${project.repos.length} repos`}
-          {othersActive ? ", en modo aislado porque ya hay otra sesión trabajando" : ""}.
+          {tn(project.repos.length, "Tell Claude what to do in {project}. A new Claude Code session opens on its repo.", "Tell Claude what to do in {project}. A new Claude Code session opens on its {count} repos.", { project: project.name })}
+          {othersActive ? ` ${t("It runs isolated because another session is already working.")}` : ""}
         </Text>
+        {preparing && (
+          <Group gap={6} mt="xs">
+            <Loader size={12} />
+            <Text size="xs" c="dimmed">
+              {t("Creating the worktree and copying .env and dependencies…")}
+            </Text>
+          </Group>
+        )}
       </div>
       <Stack className={classes.composerWrap} gap={4}>
         <Composer
-          placeholder="Pídele algo a Claude… (Enter para enviar, Shift+Enter para nueva línea)"
+          placeholder={t("Ask Claude something… (Enter to send, Shift+Enter for a new line)")}
           defaultModel={null}
           autoFocus
           onSend={start}

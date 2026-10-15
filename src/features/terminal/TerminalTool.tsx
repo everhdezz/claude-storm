@@ -6,6 +6,7 @@ import { Island } from "../../components/ide/Island";
 import { useProjectContext } from "../project/ProjectContext";
 import { XtermView } from "./XtermView";
 import classes from "./terminal.module.css";
+import { t } from "../../i18n";
 
 interface TerminalTab {
   key: string;
@@ -24,12 +25,13 @@ interface TerminalToolProps {
   saved?: SavedTerminals;
   onTabsChange: (state: SavedTerminals) => void;
   style?: React.CSSProperties;
+  onMinimize?: () => void;
 }
 
 let counter = 0;
 
 /** Tabbed terminal tool window; shells stay alive while the island is hidden. */
-export function TerminalTool({ visible, request, saved, onTabsChange, style }: TerminalToolProps) {
+export function TerminalTool({ visible, request, saved, onTabsChange, style, onMinimize }: TerminalToolProps) {
   const { project } = useProjectContext();
   const [tabs, setTabs] = useState<TerminalTab[]>(() =>
     (saved?.tabs ?? []).map((t) => {
@@ -100,25 +102,25 @@ export function TerminalTool({ visible, request, saved, onTabsChange, style }: T
 
   const actions = (
     <>
-      <Tooltip label="Nueva terminal">
-        <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => add()} aria-label="Nueva terminal">
+      <Tooltip label={t("New terminal")}>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => add()} aria-label={t("New terminal")}>
           <IconPlus size={15} />
         </ActionIcon>
       </Tooltip>
       <Menu position="bottom-end" withinPortal>
         <Menu.Target>
-          <ActionIcon variant="subtle" color="gray" size="sm" aria-label="Abrir terminal en un repo">
+          <ActionIcon variant="subtle" color="gray" size="sm" aria-label={t("Open a terminal in a repo")}>
             <IconChevronDown size={15} />
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Label>Abrir en</Menu.Label>
+          <Menu.Label>{t("Open in")}</Menu.Label>
           {project.repos.map((r) => (
             <Menu.Item key={r.id} onClick={() => add(r.path)}>
               {r.name}
             </Menu.Item>
           ))}
-          <Menu.Item onClick={async () => add(await homeDir())}>Carpeta personal</Menu.Item>
+          <Menu.Item onClick={async () => add(await homeDir())}>{t("Home folder")}</Menu.Item>
         </Menu.Dropdown>
       </Menu>
     </>
@@ -133,6 +135,7 @@ export function TerminalTool({ visible, request, saved, onTabsChange, style }: T
         </>
       }
       actions={actions}
+      onMinimize={onMinimize}
       style={{ ...style, display: visible ? undefined : "none" }}
     >
       <div className={classes.body}>

@@ -33,3 +33,20 @@
   gap: 8px;
   padding: 2px 8px 2px 44px;
 }
+
+.branchTarget {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: -4px;
+}
+
+.branchTarget:hover {
+  background: var(--dh-hover);
+}
+
+.branchList {
+  max-height: 420px;
+  overflow-y: auto;
+}
