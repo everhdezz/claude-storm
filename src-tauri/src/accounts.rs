@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{AppError, AppResult};
 use crate::models::{AccountKind, ClaudeAccount};
 
-/// Keychain service kept from the app's former name (DevHub) so stored API keys stay readable.
-const SERVICE: &str = "dev.devhub.app";
+const SERVICE: &str = "dev.claudestorm.app";
 
 /// Variables that select Claude credentials or their storage; cleared before applying an account.
 pub const AUTH_VARS: &[&str] = &[

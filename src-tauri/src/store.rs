@@ -13,17 +13,16 @@ pub struct Store {
 
 impl Store {
     /// Loads the store from disk, starting empty when the file does not exist yet.
-    ///
-    /// The file keeps its former name (`devhub.json`) so existing data survives the rename.
+
     pub fn load(dir: PathBuf) -> AppResult<Self> {
         fs::create_dir_all(&dir)?;
-        let path = dir.join("devhub.json");
+        let path = dir.join("claude-storm.json");
         let mut data: AppData = if path.exists() {
             let raw = fs::read_to_string(&path)?;
             serde_json::from_str(&raw).unwrap_or_else(|err| {
-                let backup = dir.join("devhub.corrupt.json");
+                let backup = dir.join("claude-storm.corrupt.json");
                 let _ = fs::copy(&path, &backup);
-                eprintln!("devhub.json could not be parsed ({err}); backed up to {backup:?}");
+                eprintln!("claude-storm.json could not be parsed ({err}); backed up to {backup:?}");
                 AppData::default()
             })
         } else {
@@ -63,7 +62,7 @@ impl Store {
 }
 
 impl Store {
-    /// Folder that holds devhub.json and the other app files.
+    /// Folder that holds claude-storm.json and the other app files.
     pub fn dir(&self) -> PathBuf {
         self.path.parent().map(PathBuf::from).unwrap_or_default()
     }
