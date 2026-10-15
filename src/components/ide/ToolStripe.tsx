@@ -12,7 +12,7 @@ export interface StripeItem<T extends string> {
 interface ToolStripeProps<T extends string, B extends string> {
   top: StripeItem<T>[];
   bottom: StripeItem<B>[];
-  activeTop: T | null;
+  activeTop: T[];
   activeBottom: B | null;
   onTop: (id: T) => void;
   onBottom: (id: B) => void;
@@ -23,7 +23,7 @@ export function ToolStripe<T extends string, B extends string>(props: ToolStripe
   return (
     <nav className={classes.stripe}>
       {props.top.map((item) => (
-        <StripeButton key={item.id} item={item} active={props.activeTop === item.id} onClick={() => props.onTop(item.id)} />
+        <StripeButton key={item.id} item={item} active={props.activeTop.includes(item.id)} onClick={() => props.onTop(item.id)} />
       ))}
       <div style={{ flex: 1 }} />
       {props.bottom.map((item) => (
@@ -44,8 +44,8 @@ function StripeButton<T extends string>({ item, active, onClick }: { item: Strip
   return (
     <Tooltip label={item.label} position="right" openDelay={300}>
       <UnstyledButton className={classes.stripeButton} data-active={active || undefined} onClick={onClick} aria-label={item.label}>
-        <Indicator disabled={!item.badge} color="teal" size={7} offset={3}>
-          <Icon size={20} stroke={1.6} />
+        <Indicator disabled={!item.badge} color="teal" size={7} offset={3} style={{ display: "flex" }}>
+          <Icon size={20} stroke={1.6} style={{ display: "block" }} />
         </Indicator>
       </UnstyledButton>
     </Tooltip>

@@ -4,20 +4,25 @@ export type LeftTool = "projects" | "chats";
 export type BottomTool = "terminal" | "services";
 
 export interface LayoutPrefs {
-  left: LeftTool | null;
+  leftTools: LeftTool[];
   bottom: BottomTool | null;
   leftWidth: number;
+  leftTopHeight: number;
   bottomHeight: number;
 }
 
 const KEY = "devhub.layout";
-const DEFAULTS: LayoutPrefs = { left: "projects", bottom: null, leftWidth: 300, bottomHeight: 300 };
+const ORDER: LeftTool[] = ["projects", "chats"];
+const DEFAULTS: LayoutPrefs = { leftTools: ["projects"], bottom: null, leftWidth: 300, leftTopHeight: 320, bottomHeight: 300 };
 
-/** Reads saved layout preferences, tolerating unavailable storage. */
+/** Reads saved layout preferences (migrating the old single `left` tool), tolerating unavailable storage. */
 function load(): LayoutPrefs {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS;
+    if (!raw) return DEFAULTS;
+    const saved = JSON.parse(raw) as Partial<LayoutPrefs> & { left?: LeftTool | null };
+    const leftTools = saved.leftTools ?? (saved.left ? [saved.left] : saved.left === null ? [] : DEFAULTS.leftTools);
+    return { ...DEFAULTS, ...saved, leftTools };
   } catch {
     return DEFAULTS;
   }
@@ -36,7 +41,15 @@ export function useLayoutPrefs() {
   }, [prefs]);
 
   function toggleLeft(tool: LeftTool) {
-    setPrefs((p) => ({ ...p, left: p.left === tool ? null : tool }));
+    setPrefs((p) => {
+      const on = p.leftTools.includes(tool);
+      const next = on ? p.leftTools.filter((t) => t !== tool) : [...p.leftTools, tool];
+      return { ...p, leftTools: ORDER.filter((t) => next.includes(t)) };
+    });
+  }
+
+  function showLeft(tool: LeftTool) {
+    setPrefs((p) => (p.leftTools.includes(tool) ? p : { ...p, leftTools: ORDER.filter((t) => t === tool || p.leftTools.includes(t)) }));
   }
 
   function toggleBottom(tool: BottomTool) {
@@ -47,9 +60,9 @@ export function useLayoutPrefs() {
     setPrefs((p) => ({ ...p, bottom: tool }));
   }
 
-  function resize(patch: Partial<Pick<LayoutPrefs, "leftWidth" | "bottomHeight">>) {
+  function resize(patch: Partial<Pick<LayoutPrefs, "leftWidth" | "bottomHeight" | "leftTopHeight">>) {
     setPrefs((p) => ({ ...p, ...patch }));
   }
 
-  return { prefs, toggleLeft, toggleBottom, showBottom, resize };
+  return { prefs, toggleLeft, showLeft, toggleBottom, showBottom, resize };
 }

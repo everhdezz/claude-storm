@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Center, Loader, Text } from "@mantine/core";
-import { IconFolder, IconMessages, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
+import { IconFolder, IconMessageCircle, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
 import { Outlet, useParams } from "react-router";
 import { isActive } from "../../api/processes";
 import { Island } from "../../components/ide/Island";
@@ -56,7 +56,7 @@ export function ProjectPage() {
   const sessionsWorking = sessions.some((s) => s.status === "working");
   const topItems: StripeItem<LeftTool>[] = [
     { id: "projects", label: "Proyectos", icon: IconFolder },
-    { id: "chats", label: "Chats", icon: IconMessages, badge: sessionsWorking },
+    { id: "chats", label: "Chats", icon: IconMessageCircle, badge: sessionsWorking },
   ];
   const bottomItems: StripeItem<BottomTool>[] = [
     { id: "terminal", label: "Terminal", icon: IconTerminal2 },
@@ -101,16 +101,31 @@ export function ProjectPage() {
         <ToolStripe
           top={topItems}
           bottom={bottomItems}
-          activeTop={prefs.left}
+          activeTop={prefs.leftTools}
           activeBottom={prefs.bottom}
           onTop={layout.toggleLeft}
           onBottom={layout.toggleBottom}
         />
         <div className={ide.workspace}>
           <div className={ide.topRow}>
-            {prefs.left === "projects" && <ProjectsTool style={{ width: prefs.leftWidth, flexShrink: 0 }} />}
-            {prefs.left === "chats" && <ChatsTool style={{ width: prefs.leftWidth, flexShrink: 0 }} />}
-            {prefs.left && (
+            {prefs.leftTools.length > 0 && (
+              <div className={ide.leftColumn} style={{ width: prefs.leftWidth }}>
+                {prefs.leftTools.includes("projects") && (
+                  <ProjectsTool style={prefs.leftTools.length > 1 ? { height: prefs.leftTopHeight, flexShrink: 0 } : { flex: 1 }} />
+                )}
+                {prefs.leftTools.length > 1 && (
+                  <Splitter
+                    direction="vertical"
+                    value={prefs.leftTopHeight}
+                    min={120}
+                    max={window.innerHeight - 260}
+                    onChange={(leftTopHeight) => layout.resize({ leftTopHeight })}
+                  />
+                )}
+                {prefs.leftTools.includes("chats") && <ChatsTool style={{ flex: 1 }} />}
+              </div>
+            )}
+            {prefs.leftTools.length > 0 && (
               <Splitter
                 direction="horizontal"
                 value={prefs.leftWidth}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActionIcon, Group, Loader, Menu, Radio, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconGitBranch, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
+import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
 import { useNavigate } from "react-router";
 import { archiveSession, deleteSession, duplicateSession, isBusy, stopSession, updateSession } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
@@ -110,26 +110,18 @@ export function SessionCard({ session, selected }: { session: Session; selected:
         </Text>
       )}
       <Group justify="space-between" mt={4} wrap="nowrap">
-        <Group gap={4} wrap="nowrap">
+        <Group gap={4} wrap="nowrap" miw={0} style={{ overflow: "hidden", flex: 1 }}>
           {session.status === "working" && <Loader size={10} />}
-          <Text size="xs" c="dimmed">
+          <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
             {relativeTime(session.lastActivityAt)}
             {session.filesTouched.length > 0 && ` · ${session.filesTouched.length} archivo(s)`}
           </Text>
           {statusText(session.status) && (
-            <Text size="xs" c={`${statusColor(session.status)}.4`}>
+            <Text size="xs" c={`${statusColor(session.status)}.4`} truncate>
               · {statusText(session.status)}
             </Text>
           )}
         </Group>
-        {session.branch && (
-          <Group gap={3} wrap="nowrap" miw={0}>
-            <IconGitBranch size={11} />
-            <Text size="xs" c="dimmed" ff="monospace" truncate maw={120}>
-              {session.branch.replace("devhub/", "")}
-            </Text>
-          </Group>
-        )}
       </Group>
     </div>
   );
