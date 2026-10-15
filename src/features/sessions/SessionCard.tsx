@@ -1,22 +1,21 @@
 import { useState } from "react";
-import { ActionIcon, Badge, Group, Menu, Radio, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Group, Loader, Menu, Radio, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconGitBranch, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
 import { useNavigate } from "react-router";
-import { archiveSession, deleteSession, duplicateSession, isBusy, sessionModelLabel, stopSession, updateSession } from "../../api/sessions";
+import { archiveSession, deleteSession, duplicateSession, isBusy, stopSession, updateSession } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import type { Session, WorktreeCleanup } from "../../types";
 import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
-import { SessionStatusBadge } from "./SessionStatusBadge";
+import { statusColor, statusText } from "./SessionStatusBadge";
 import classes from "./sessions.module.css";
 
 /** Card of one session in the Chats tool window. */
 export function SessionCard({ session, selected }: { session: Session; selected: boolean }) {
-  const { project, settings, account } = useProjectContext();
+  const { project } = useProjectContext();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
-  const repoNames = session.repoIds.map((id) => project.repos.find((r) => r.id === id)?.name).filter(Boolean) as string[];
 
   async function rename(title: string) {
     setEditing(false);
@@ -105,27 +104,24 @@ export function SessionCard({ session, selected }: { session: Session; selected:
           </Menu.Dropdown>
         </Menu>
       </Group>
-      <Group gap={4} mt={4}>
-        <SessionStatusBadge session={session} />
-        <Badge size="xs" variant="default">
-          {sessionModelLabel(session, account, settings)}
-        </Badge>
-        {repoNames.map((n) => (
-          <Badge key={n} size="xs" variant="light" color="gray">
-            {n}
-          </Badge>
-        ))}
-      </Group>
       {session.summary && (
         <Text size="xs" c="dimmed" mt={4} truncate>
-          {session.summary}
+          {plainSummary(session.summary)}
         </Text>
       )}
       <Group justify="space-between" mt={4} wrap="nowrap">
-        <Text size="xs" c="dimmed">
-          {relativeTime(session.lastActivityAt)}
-          {session.filesTouched.length > 0 && ` · ${session.filesTouched.length} archivo(s)`}
-        </Text>
+        <Group gap={4} wrap="nowrap">
+          {session.status === "working" && <Loader size={10} />}
+          <Text size="xs" c="dimmed">
+            {relativeTime(session.lastActivityAt)}
+            {session.filesTouched.length > 0 && ` · ${session.filesTouched.length} archivo(s)`}
+          </Text>
+          {statusText(session.status) && (
+            <Text size="xs" c={`${statusColor(session.status)}.4`}>
+              · {statusText(session.status)}
+            </Text>
+          )}
+        </Group>
         {session.branch && (
           <Group gap={3} wrap="nowrap" miw={0}>
             <IconGitBranch size={11} />
@@ -137,6 +133,11 @@ export function SessionCard({ session, selected }: { session: Session; selected:
       </Group>
     </div>
   );
+}
+
+/** One-line summary without Markdown markers. */
+function plainSummary(text: string): string {
+  return text.replace(/[*_`#>]+/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").trim();
 }
 
 /** Confirms archive/delete; isolated sessions also choose what happens to the worktree and branch. */
