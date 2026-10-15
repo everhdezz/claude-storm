@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Anchor, Badge, Button, Checkbox, Code, Group, Radio, Stack, Text, TextInput } from "@mantine/core";
-import { IconHelpCircle, IconShieldCheck } from "@tabler/icons-react";
-import { sessionAnswerApproval } from "../../api/sessions";
+import { IconHelpCircle, IconShieldCheck, IconShieldOff } from "@tabler/icons-react";
+import { sessionAnswerApproval, updateSession } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import { t } from "../../i18n";
 import type { ApprovalDecision, ApprovalRequest, Session } from "../../types";
@@ -21,9 +21,10 @@ interface Question {
  * each card is answered.
  */
 export function ApprovalPrompts({ session }: { session: Session }) {
-  if (session.approvals.length === 0) return null;
+  if (session.approvals.length === 0) return <AllowedToolsBar session={session} />;
   return (
     <Stack gap={8} mb={8}>
+      <AllowedToolsBar session={session} />
       {session.approvals.map((a) =>
         a.toolName === "AskUserQuestion" ? (
           <QuestionCard key={a.id} session={session} request={a} />
@@ -32,6 +33,28 @@ export function ApprovalPrompts({ session }: { session: Session }) {
         ),
       )}
     </Stack>
+  );
+}
+
+/** What is already allowed "always" in this session, with a way to take it back. */
+function AllowedToolsBar({ session }: { session: Session }) {
+  const rules = session.allowedTools ?? [];
+  if (rules.length === 0) return null;
+  const all = rules.includes("*");
+  return (
+    <Group gap={6} mb={6} wrap="nowrap">
+      <IconShieldOff size={14} color={all ? "var(--mantine-color-orange-4)" : "var(--mantine-color-dimmed)"} />
+      <Text size="xs" c={all ? "orange.4" : "dimmed"} style={{ flex: 1 }}>
+        {all ? t("Everything is allowed in this session") : t("{count} always-allowed rules in this session", { count: rules.length })}
+      </Text>
+      <Anchor
+        size="xs"
+        c="dimmed"
+        onClick={() => updateSession(session.id, { clearAllowedTools: true }).catch((err) => notifyError(err))}
+      >
+        {t("Revoke")}
+      </Anchor>
+    </Group>
   );
 }
 
@@ -102,6 +125,9 @@ function PermissionCard({ session, request }: { session: Session; request: Appro
         </Button>
         <Button size="compact-sm" variant="light" color="teal" disabled={busy} onClick={() => decide({ allow: true, always: true })}>
           {isBash ? t("Always allow this command") : t("Always allow {tool} in this session", { tool: request.toolName })}
+        </Button>
+        <Button size="compact-sm" variant="light" color="orange" disabled={busy} onClick={() => decide({ allow: true, all: true })}>
+          {t("Allow everything in this session")}
         </Button>
         <div style={{ flex: 1 }} />
         {noting ? (

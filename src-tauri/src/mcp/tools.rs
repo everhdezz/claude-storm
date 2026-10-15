@@ -1,5 +1,5 @@
 //! Tools exposed to Claude sessions: inspect the worktree, list services, start/stop/restart the
-//! ones it owns and read their logs.
+//! ones it owns and read their logs, and read and edit the project wiki.
 
 use std::time::Duration;
 
@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::commands::processes::spawn_repo_command;
+use crate::commands::wiki::{self, WikiKind, WikiNode};
 use crate::error::{AppError, AppResult};
 use crate::models::{ApprovalRequest, Project, Repo, RepoCommand, Session, SessionMode};
 use crate::sessions::manager::emit_session;
@@ -20,7 +21,11 @@ pub const INSTRUCTIONS: &str = "ClaudeStorm runs this project's dev servers and 
 Use these tools instead of starting long-running servers with Bash: they run inside your working folder \
 (your git worktree for isolated sessions), show up in the user's Services panel, and keep running after \
 your turn. After changing code that a server serves, restart it with service_restart and read service_logs \
-to confirm it compiles. You can only stop or restart services you started.";
+to confirm it compiles. You can only stop or restart services you started. \
+The project also has a wiki of Markdown pages the user keeps (wiki_* tools): check it for project docs, \
+conventions and notes, and update it when the user asks you to document something. \
+When a message contains a wiki://<id> reference (often as a Markdown link), it points to a wiki page: \
+read it with wiki_read, passing the reference as path.";
 
 const DEFAULT_WAIT: u64 = 15;
 const MAX_WAIT: u64 = 90;
@@ -37,6 +42,9 @@ pub struct ApprovalDecision {
     /// Also allow this tool (or exact Bash command) for the rest of the session.
     #[serde(default)]
     pub always: bool,
+    /// Allow every tool and command for the rest of the session (AskUserQuestion still asks).
+    #[serde(default)]
+    pub all: bool,
     /// AskUserQuestion answers: question text → chosen label(s), comma-separated for multi-select.
     #[serde(default)]
     pub answers: Option<serde_json::Map<String, Value>>,
@@ -56,6 +64,7 @@ pub fn definitions() -> Value {
         },
         "required": ["repo", "command"]
     });
+    let wiki_path = json!({ "type": "string", "description": "Path as shown by wiki_tree (e.g. Guides/Setup.md) or a wiki://<id> reference" });
     json!([
         {
             "name": APPROVAL_TOOL,
@@ -114,6 +123,86 @@ pub fn definitions() -> Value {
                 "required": ["repo", "command"]
             },
             "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "wiki_tree",
+            "description": "Every folder and Markdown page of the project wiki, one per line: folders end in /, pages show their wiki://<id> reference.",
+            "inputSchema": { "type": "object", "properties": {} },
+            "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "wiki_read",
+            "description": "Markdown of a wiki page.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": wiki_path.clone() },
+                "required": ["path"]
+            },
+            "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "wiki_search",
+            "description": "Case-insensitive search in wiki page titles and text; returns matching pages with the matching lines.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "query": { "type": "string" } },
+                "required": ["query"]
+            },
+            "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "wiki_create",
+            "description": "Creates a wiki page (with optional Markdown) or folder. If the name is taken, \" 2\", \" 3\"… is appended. Returns its path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "parent": { "type": "string", "description": "Folder path to create it in; omit or \"\" for the wiki root" },
+                    "name": { "type": "string", "description": "Page title or folder name, without .md" },
+                    "kind": { "type": "string", "enum": ["doc", "folder"], "description": "Default doc" },
+                    "content": { "type": "string", "description": "Markdown of a new page" }
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "wiki_write",
+            "description": "Replaces the whole Markdown of an existing wiki page (read it first to keep what should stay).",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": wiki_path.clone(), "content": { "type": "string" } },
+                "required": ["path", "content"]
+            }
+        },
+        {
+            "name": "wiki_rename",
+            "description": "Renames a wiki page or folder in place; returns its new path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": wiki_path.clone(), "name": { "type": "string", "description": "New title, without .md" } },
+                "required": ["path", "name"]
+            }
+        },
+        {
+            "name": "wiki_move",
+            "description": "Moves a wiki page or folder into another folder; returns its new path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": wiki_path.clone(),
+                    "parent": { "type": "string", "description": "Destination folder path; \"\" for the wiki root" }
+                },
+                "required": ["path", "parent"]
+            }
+        },
+        {
+            "name": "wiki_delete",
+            "description": "Deletes a wiki page, or a folder with everything inside. Cannot be undone; only do it when the user asks.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": wiki_path },
+                "required": ["path"]
+            },
+            "annotations": { "destructiveHint": true }
         }
     ])
 }
@@ -130,9 +219,18 @@ pub async fn call<R: Runtime>(app: &AppHandle<R>, session_id: &str, name: &str, 
         "service_restart" => start(app, &session, &project, args, true).await,
         "service_stop" => stop(app, &session, &project, args).await,
         "service_logs" => logs(app, &project, args),
+        _ if name.starts_with("wiki_") => wiki_tool(app, &project, name, args),
         APPROVAL_TOOL => approval(app, &session, args).await,
         _ => Err(AppError::msg(format!("Unknown tool {name}"))),
     }
+}
+
+/// Rule stored by "allow everything in this session".
+pub const ALLOW_ALL: &str = "*";
+
+/// Whether the session's "always allow" rules already cover this rule.
+fn is_allowed(allowed_tools: &[String], rule: &str) -> bool {
+    allowed_tools.iter().any(|r| r == ALLOW_ALL || r == rule)
 }
 
 /// Rule stored by "always allow": the exact command for Bash, the tool name otherwise.
@@ -150,7 +248,7 @@ async fn approval<R: Runtime>(app: &AppHandle<R>, session: &Session, args: &Valu
     let allow = |input: Value| json!({ "behavior": "allow", "updatedInput": input }).to_string();
     let rule = allow_rule(&tool_name, &input);
     let is_question = tool_name == "AskUserQuestion";
-    if !is_question && session.allowed_tools.contains(&rule) {
+    if !is_question && is_allowed(&session.allowed_tools, &rule) {
         return Ok(allow(input));
     }
 
@@ -163,13 +261,29 @@ async fn approval<R: Runtime>(app: &AppHandle<R>, session: &Session, args: &Valu
     emit_session(app, &updated);
 
     let decision = rx.await.unwrap_or_default();
+    let new_rule = match (decision.allow && !is_question, decision.all, decision.always) {
+        (true, true, _) => Some(ALLOW_ALL.to_string()),
+        (true, false, true) => Some(rule.clone()),
+        _ => None,
+    };
     if let Ok(updated) = store.update_session(&session.id, |s| {
         s.approvals.retain(|a| a.id != id);
-        if decision.allow && decision.always && !is_question && !s.allowed_tools.contains(&rule) {
-            s.allowed_tools.push(rule.clone());
+        if let Some(new_rule) = &new_rule {
+            if !s.allowed_tools.contains(new_rule) {
+                s.allowed_tools.push(new_rule.clone());
+            }
         }
     }) {
         emit_session(app, &updated);
+        if new_rule.is_some() {
+            // Prompts that were already waiting and the new rule covers are answered too.
+            let mcp = app.state::<crate::mcp::McpState>();
+            for other in &updated.approvals {
+                if other.tool_name != "AskUserQuestion" && is_allowed(&updated.allowed_tools, &allow_rule(&other.tool_name, &other.input)) {
+                    mcp.answer(&other.id, ApprovalDecision { allow: true, ..Default::default() });
+                }
+            }
+        }
     }
 
     if !decision.allow {
@@ -371,6 +485,124 @@ fn tail(manager: &ProcessManager, id: &str, lines: usize) -> String {
     let start = logs.len().saturating_sub(lines);
     let text: Vec<String> = logs[start..].iter().map(|l| l.text.clone()).collect();
     if text.is_empty() { "(no output yet)".into() } else { text.join("\n") }
+}
+
+fn wiki_tool<R: Runtime>(app: &AppHandle<R>, project: &Project, name: &str, args: &Value) -> AppResult<String> {
+    let root = wiki::root(app, &project.id)?;
+    let arg = |key: &str| args.get(key).and_then(Value::as_str).unwrap_or_default();
+    // Pages may be named by path (with or without .md) or by a `wiki://<id>` reference.
+    let page = |key: &str| {
+        if let Some(path) = wiki::path_of_ref(&root, arg(key)) {
+            return path;
+        }
+        let path = arg(key).trim().trim_matches('/');
+        if path.ends_with(".md") || root.join(path).is_dir() { path.to_string() } else { format!("{path}.md") }
+    };
+    let entry = |key: &str| {
+        if let Some(path) = wiki::path_of_ref(&root, arg(key)) {
+            return path;
+        }
+        let path = arg(key).trim().trim_matches('/');
+        if root.join(path).exists() { path.to_string() } else { page(key) }
+    };
+    let changed = |paths: &[&str]| wiki::emit_changed(app, &project.id, paths);
+    match name {
+        "wiki_tree" => {
+            let mut lines = Vec::new();
+            wiki_lines(&wiki::tree(&root)?, &mut lines);
+            Ok(if lines.is_empty() { "The wiki is empty.".into() } else { lines.join("\n") })
+        }
+        "wiki_read" => wiki::read(&root, &page("path")),
+        "wiki_search" => wiki_search(&root, arg("query")),
+        "wiki_create" => {
+            let kind = if arg("kind") == "folder" { WikiKind::Folder } else { WikiKind::Doc };
+            let parent = arg("parent").trim().trim_matches('/');
+            let path = wiki::create(&root, parent, arg("name"), kind, arg("content"))?;
+            changed(&[&path]);
+            Ok(format!("Created {path}"))
+        }
+        "wiki_write" => {
+            let path = page("path");
+            wiki::write(&root, &path, arg("content"))?;
+            changed(&[&path]);
+            Ok(format!("Saved {path}"))
+        }
+        "wiki_rename" => {
+            let from = entry("path");
+            let to = wiki::rename(&root, &from, arg("name"))?;
+            changed(&[&from, &to]);
+            Ok(format!("Renamed to {to}"))
+        }
+        "wiki_move" => {
+            let from = entry("path");
+            let to = wiki::move_to(&root, &from, arg("parent").trim().trim_matches('/'))?;
+            changed(&[&from, &to]);
+            Ok(format!("Moved to {to}"))
+        }
+        "wiki_delete" => {
+            let path = entry("path");
+            wiki::delete(&root, &path)?;
+            changed(&[&path]);
+            Ok(format!("Deleted {path}"))
+        }
+        _ => Err(AppError::msg(format!("Unknown tool {name}"))),
+    }
+}
+
+fn wiki_lines(nodes: &[WikiNode], out: &mut Vec<String>) {
+    for node in nodes {
+        match node.kind {
+            WikiKind::Folder => {
+                out.push(format!("{}/", node.path));
+                wiki_lines(&node.children, out);
+            }
+            WikiKind::Doc => out.push(match &node.id {
+                Some(id) => format!("{}  {}{id}", node.path, wiki::REF_SCHEME),
+                None => node.path.clone(),
+            }),
+        }
+    }
+}
+
+const SEARCH_MAX_PAGES: usize = 30;
+const SEARCH_MAX_LINES: usize = 5;
+
+fn wiki_search(root: &std::path::Path, query: &str) -> AppResult<String> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Err(AppError::msg("Empty query"));
+    }
+    let mut pages = Vec::new();
+    let tree = wiki::read_tree(root, root)?;
+    wiki_docs(&tree, &mut pages);
+    let mut results = Vec::new();
+    for node in pages {
+        let text = wiki::read(root, &node.path).unwrap_or_default();
+        let lines: Vec<String> = text
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.to_lowercase().contains(&query))
+            .take(SEARCH_MAX_LINES)
+            .map(|(i, l)| format!("  {}: {}", i + 1, l.trim()))
+            .collect();
+        if lines.is_empty() && !node.name.to_lowercase().contains(&query) {
+            continue;
+        }
+        results.push(std::iter::once(node.path.clone()).chain(lines).collect::<Vec<_>>().join("\n"));
+        if results.len() == SEARCH_MAX_PAGES {
+            break;
+        }
+    }
+    Ok(if results.is_empty() { format!("No wiki page mentions \"{query}\".") } else { results.join("\n\n") })
+}
+
+fn wiki_docs<'a>(nodes: &'a [WikiNode], out: &mut Vec<&'a WikiNode>) {
+    for node in nodes {
+        match node.kind {
+            WikiKind::Folder => wiki_docs(&node.children, out),
+            WikiKind::Doc => out.push(node),
+        }
+    }
 }
 
 fn pretty(v: &Value) -> String {

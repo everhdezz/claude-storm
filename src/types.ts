@@ -166,6 +166,7 @@ export interface Session {
   pending: PendingMessage[];
   /** Permission prompts and questions Claude is waiting on. */
   approvals: ApprovalRequest[];
+  /** What the user allowed "always" in this session: a tool name, `Bash:<command>`, or `*` for everything. */
   allowedTools: string[];
 }
 
@@ -179,6 +180,8 @@ export interface ApprovalRequest {
 export interface ApprovalDecision {
   allow: boolean;
   always?: boolean;
+  /** Allow every tool and command for the rest of the session. */
+  all?: boolean;
   /** AskUserQuestion: question text → chosen label(s), comma-separated for multi-select. */
   answers?: Record<string, string>;
   message?: string;

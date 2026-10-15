@@ -33,6 +33,9 @@ pub struct SessionPatch {
     pub description: Option<String>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
+    /// Forget what the user allowed "always" in this session.
+    #[serde(default)]
+    pub clear_allowed_tools: bool,
 }
 
 /// What to do with an isolated session's worktrees when archiving or deleting it.
@@ -208,7 +211,7 @@ pub async fn stop_session(app: AppHandle, manager: State<'_, SessionManager>, se
     manager.stop(&app, &session_id).await
 }
 
-/// Edits title, description, model or permission mode.
+/// Edits title, description, model or permission mode, or forgets the "always allow" rules.
 #[tauri::command]
 pub fn update_session(app: AppHandle, store: State<Store>, session_id: String, patch: SessionPatch) -> AppResult<Session> {
     let updated = store.update_session(&session_id, |s| {
@@ -223,6 +226,9 @@ pub fn update_session(app: AppHandle, store: State<Store>, session_id: String, p
         }
         if let Some(mode) = patch.permission_mode {
             s.permission_mode = mode;
+        }
+        if patch.clear_allowed_tools {
+            s.allowed_tools.clear();
         }
     })?;
     emit_session(&app, &updated);

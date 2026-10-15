@@ -5,7 +5,7 @@ import { IconDots, IconFileDiff, IconGitBranch, IconGitCommit, IconGitMerge, Ico
 import { useNavigate, useParams } from "react-router";
 import {
   isBusy,
-  PERMISSION_OPTIONS,
+  updateSession,
   sessionModelLabel,
   sendSessionPrompt,
   sessionCommit,
@@ -240,7 +240,8 @@ export function SessionView() {
             isBusy(session) ? t("Write your next message; it is queued and sent when Claude finishes…") : t("Continue the conversation…")
           }
           defaultModel={session.model}
-          context={PERMISSION_OPTIONS.find((o) => o.value === session.permissionMode)?.label ?? session.permissionMode}
+          permissionMode={session.permissionMode}
+          onPermissionModeChange={(mode) => updateSession(session.id, { permissionMode: mode }).catch((err) => notifyError(err))}
           busy={isBusy(session)}
           autoFocus
           onSend={send}

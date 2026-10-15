@@ -2,6 +2,29 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { AppSettings, ChatItem, ProcessInfo, Project, ProjectSummary, Session } from "../types";
 
+const wikiFolders = new Set(["Guías", "Guías/Backend"]);
+const wikiFiles = new Map<string, string>([
+  ["Inicio.md", "# Bienvenido\n\nEsta es la wiki del proyecto **acme**.\n\n- [ ] Documentar la API\n- [x] Configurar el entorno\n\n> Escribe `/` para insertar bloques."],
+  ["Guías/Setup local.md", "## Requisitos\n\n1. PHP 8.3\n2. Node 22\n\n```bash\ncomposer install\n```"],
+  ["Guías/Backend/Colas.md", "Las colas usan **Redis**."],
+]);
+
+/** Deterministic fake uuid per mock page. */
+function mockId(path: string): string {
+  let h = 0;
+  for (const c of path) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `${h.toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`;
+}
+
+/** Builds the wiki tree from the flat mock folders and files, folders first. */
+function wikiTree(parent = ""): unknown[] {
+  const prefix = parent ? `${parent}/` : "";
+  const direct = (p: string) => p.startsWith(prefix) && !p.slice(prefix.length).includes("/");
+  const folders = [...wikiFolders].filter(direct).sort().map((p) => ({ name: p.slice(prefix.length), path: p, kind: "folder", children: wikiTree(p) }));
+  const docs = [...wikiFiles.keys()].filter(direct).sort().map((p) => ({ name: p.slice(prefix.length, -3), path: p, kind: "doc", id: mockId(p) }));
+  return [...folders, ...docs];
+}
+
 /** Browser-only fixtures so the UI can be previewed outside Tauri during development. */
 const projects: Project[] = [
   {
@@ -306,6 +329,39 @@ export function installMocks(): void {
         case "list_processes":
         case "process_logs":
           return [];
+        case "wiki_tree":
+          return wikiTree();
+        case "wiki_root":
+          return "/tmp/claude-storm/wiki/p1";
+        case "wiki_read":
+          return wikiFiles.get(String(a.path)) ?? "";
+        case "wiki_write":
+          wikiFiles.set(String(a.path), String(a.content));
+          return null;
+        case "wiki_create": {
+          const base = `${a.parent ? `${a.parent}/` : ""}${a.name}`;
+          let path = a.kind === "doc" ? `${base}.md` : base;
+          for (let n = 2; wikiFiles.has(path) || wikiFolders.has(path); n++) path = a.kind === "doc" ? `${base} ${n}.md` : `${base} ${n}`;
+          if (a.kind === "doc") wikiFiles.set(path, "");
+          else wikiFolders.add(path);
+          return path;
+        }
+        case "wiki_rename":
+        case "wiki_move": {
+          const from = String(a.path);
+          const isDoc = wikiFiles.has(from);
+          const name = cmd === "wiki_rename" ? String(a.name) : from.split("/").pop()!.replace(/\.md$/, "");
+          const parent = cmd === "wiki_rename" ? from.split("/").slice(0, -1).join("/") : String(a.parent);
+          const to = `${parent ? `${parent}/` : ""}${name}${isDoc ? ".md" : ""}`;
+          const move = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
+          for (const [k, v] of [...wikiFiles]) if (move(k) !== k) (wikiFiles.delete(k), wikiFiles.set(move(k), v));
+          for (const k of [...wikiFolders]) if (move(k) !== k) (wikiFolders.delete(k), wikiFolders.add(move(k)));
+          return to;
+        }
+        case "wiki_delete":
+          for (const key of [...wikiFiles.keys()]) if (key === a.path || key.startsWith(`${a.path}/`)) wikiFiles.delete(key);
+          for (const key of [...wikiFolders]) if (key === a.path || key.startsWith(`${a.path}/`)) wikiFolders.delete(key);
+          return null;
         default:
           console.info("[mock] unhandled", cmd, args);
           return null;

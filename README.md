@@ -6,7 +6,7 @@
 
 Chat with Claude, let it work in isolated git worktrees, run your dev servers, review diffs, approve what it wants to do, and merge, all from one window that feels like a JetBrains IDE.
 
-![version](https://img.shields.io/badge/version-0.5.0-blue)
+![version](https://img.shields.io/badge/version-0.6.1-blue)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![platform](https://img.shields.io/badge/macOS-tested-black?logo=apple)
 ![built with](https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20React-24C8DB?logo=tauri)
@@ -61,6 +61,8 @@ It runs **locally**, uses **your own Claude Code login** (subscription or API ke
 
 ### Claude can test its own work (MCP)
 Every session gets a built-in, local **ClaudeStorm MCP server** with tools to list the project's services, start/restart/stop the ones it owns, read their logs and inspect its worktree. So Claude can restart the dev server after a change and confirm it compiles, instead of guessing. Services Claude starts are labeled in the UI, and it can never stop the ones you started.
+
+The same server exposes the **project wiki** (`wiki_tree`, `wiki_read`, `wiki_search`, `wiki_create`, `wiki_write`, `wiki_rename`, `wiki_move`, `wiki_delete`), so Claude can look up your docs and write new ones; the wiki view refreshes live when it does. Every page has a stable internal id: use **Copy reference** in a page's menu and paste the `[Page](wiki://<id>)` link in any chat to hand that page to Claude as context.
 
 ### Everything else
 - **Multiple Claude accounts**: isolated subscription profiles (Claude Code does the login in your browser), API keys stored in the OS keychain, or the login already on your machine.
@@ -134,7 +136,7 @@ npm run tauri build
 
 - **Your credentials stay with Claude Code.** Subscription logins happen inside Claude Code in isolated profile folders; ClaudeStorm only relays the login URL. API keys go to the OS keychain.
 - **Everything is local.** No telemetry, no accounts, no servers of our own. The only network traffic is what Claude Code itself does.
-- **The MCP server only listens on 127.0.0.1**, with an unguessable URL per session, and only exposes this project's services.
+- **The MCP server only listens on 127.0.0.1**, with an unguessable URL per session, and only exposes this project's services and wiki.
 - **Claude only does what you allow.** Prompts Claude Code would ask about in a terminal are shown to you; "always allow" applies to the current session only.
 
 ## Contributing

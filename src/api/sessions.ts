@@ -8,11 +8,13 @@ export const SESSION_ITEM = "session-item";
 export const SESSION_DELTA = "session-delta";
 export const SESSION_DELETED = "session-deleted";
 
+/** Claude Code permission modes, in Shift+Tab cycling order. */
 export const PERMISSION_OPTIONS = [
-  { value: "acceptEdits", label: t("Accept edits") },
-  { value: "auto", label: "Auto" },
-  { value: "plan", label: t("Plan only") },
-  { value: "bypassPermissions", label: t("No restrictions") },
+  { value: "default", label: t("Ask permissions"), description: t("Asks before editing files or running commands"), color: "gray" },
+  { value: "acceptEdits", label: t("Accept edits"), description: t("Edits files without asking; asks before commands"), color: "violet" },
+  { value: "plan", label: t("Plan only"), description: t("Explores and proposes a plan without changing anything"), color: "teal" },
+  { value: "auto", label: "Auto", description: t("Decides on its own and only asks for risky actions"), color: "orange" },
+  { value: "bypassPermissions", label: t("No restrictions"), description: t("Never asks; use it only in trusted repos"), color: "red" },
 ];
 
 /** Lists a project's sessions. */
@@ -40,10 +42,10 @@ export function stopSession(sessionId: string): Promise<void> {
   return call("stop_session", { sessionId });
 }
 
-/** Edits a session's title, description, model or permission mode. */
+/** Edits a session's title, description, model or permission mode, or forgets its "always allow" rules. */
 export function updateSession(
   sessionId: string,
-  patch: { title?: string; description?: string; model?: string; permissionMode?: string },
+  patch: { title?: string; description?: string; model?: string; permissionMode?: string; clearAllowedTools?: boolean },
 ): Promise<Session> {
   return call("update_session", { sessionId, patch });
 }

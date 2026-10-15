@@ -1,7 +1,7 @@
 {
   "name": "claude-storm",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.1",
   "license": "Apache-2.0",
   "author": "Ever Hernandez (@everhdezz)",
   "repository": {
@@ -17,6 +17,9 @@
     "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
+    "@blocknote/core": "^0.56.0",
+    "@blocknote/mantine": "^0.56.0",
+    "@blocknote/react": "^0.56.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

@@ -10,10 +10,11 @@ import {
   IconPaperclip,
   IconPhoto,
   IconPlayerStopFilled,
+  IconPlayerTrackNextFilled,
 } from "@tabler/icons-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useForm } from "react-hook-form";
-import { modelLabel, savePastedFile } from "../../api/sessions";
+import { modelLabel, PERMISSION_OPTIONS, savePastedFile } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import { modelOptions } from "../../api/settings";
 import { useProjectContext } from "../project/ProjectContext";
@@ -25,7 +26,9 @@ import { t } from "../../i18n";
 interface ComposerProps {
   placeholder: string;
   defaultModel: string | null;
-  context?: string;
+  /** Claude Code permission mode; shown next to the model and cycled with Shift+Tab. */
+  permissionMode: string;
+  onPermissionModeChange: (mode: string) => void;
   busy?: boolean;
   autoFocus?: boolean;
   onSend: (prompt: string, model: string | null, attachments: string[]) => Promise<void>;
@@ -40,7 +43,7 @@ interface FormValues {
 }
 
 /** Prompt box with the project's account link and a per-prompt model override; Enter sends. */
-export function Composer({ placeholder, defaultModel, context, busy = false, autoFocus, onSend, onStop, injected }: ComposerProps) {
+export function Composer({ placeholder, defaultModel, permissionMode, onPermissionModeChange, busy = false, autoFocus, onSend, onStop, injected }: ComposerProps) {
   const { account, settings } = useProjectContext();
   const effectiveDefault = defaultModel ?? account?.defaultModel ?? settings.defaultModel;
   const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormValues>({
@@ -145,6 +148,11 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
           {...register("prompt")}
           onPaste={onPaste}
           onKeyDown={(e) => {
+            if (e.key === "Tab" && e.shiftKey) {
+              e.preventDefault();
+              onPermissionModeChange(nextPermissionMode(permissionMode));
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               handleSubmit(submit)();
@@ -158,11 +166,6 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
                 <IconPaperclip size={16} />
               </ActionIcon>
             </Tooltip>
-            {context && (
-              <Text size="xs" c="dimmed" truncate>
-                {context}
-              </Text>
-            )}
           </Group>
           <Group gap={6} wrap="nowrap">
             {busy && onStop && (
@@ -187,7 +190,7 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
           </Group>
         </Group>
       </div>
-      <Group justify="space-between" mt={6} px={4} wrap="nowrap">
+      <Group gap={4} mt={6} px={4} wrap="nowrap">
         <ModelPicker
           value={model || null}
           defaultLabel={modelLabel(effectiveDefault, settings.catalog)}
@@ -195,6 +198,8 @@ export function Composer({ placeholder, defaultModel, context, busy = false, aut
           disabled={blocked}
           onChange={(v) => setValue("model", v ?? "")}
         />
+        <PermissionPicker value={permissionMode} disabled={blocked} onChange={onPermissionModeChange} />
+        <div style={{ flex: 1 }} />
         <AccountLink />
       </Group>
     </form>
@@ -233,6 +238,52 @@ function ModelPicker({ value, defaultLabel, options, disabled, onChange }: Model
         {options.map((o) => (
           <Menu.Item key={o.value} leftSection={check(o.value === value)} onClick={() => onChange(o.value)}>
             {o.label}
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+/** The mode after `mode` in Claude Code's Shift+Tab cycle. */
+function nextPermissionMode(mode: string): string {
+  const i = PERMISSION_OPTIONS.findIndex((o) => o.value === mode);
+  return PERMISSION_OPTIONS[(i + 1) % PERMISSION_OPTIONS.length]?.value ?? mode;
+}
+
+interface PermissionPickerProps {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}
+
+/** "⏵⏵ Auto mode on"-style switch for the session's permission mode, like Claude Code's footer. */
+function PermissionPicker({ value, disabled, onChange }: PermissionPickerProps) {
+  const current = PERMISSION_OPTIONS.find((o) => o.value === value) ?? { value, label: value, description: "", color: "gray" };
+  const check = (on: boolean) => (on ? <IconCheck size={14} /> : <span style={{ width: 14 }} />);
+  return (
+    <Menu position="top-start" withinPortal shadow="md" width={300}>
+      <Menu.Target>
+        <Tooltip label={t("Permission mode (Shift+Tab to switch)")} openDelay={400}>
+          <UnstyledButton className={classes.modelPicker} disabled={disabled} aria-label={t("Permission mode")}>
+            <IconPlayerTrackNextFilled size={12} color={`var(--mantine-color-${current.color}-4)`} />
+            <Text size="xs" fw={600} c={`${current.color}.4`}>
+              {t("{mode} on", { mode: current.label })}
+            </Text>
+            <IconChevronDown size={12} />
+          </UnstyledButton>
+        </Tooltip>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>{t("Permission mode · applies from the next message")}</Menu.Label>
+        {PERMISSION_OPTIONS.map((o) => (
+          <Menu.Item key={o.value} leftSection={check(o.value === current.value)} onClick={() => onChange(o.value)}>
+            <Text size="sm" c={`${o.color}.4`} fw={600}>
+              {o.label}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {o.description}
+            </Text>
           </Menu.Item>
         ))}
       </Menu.Dropdown>

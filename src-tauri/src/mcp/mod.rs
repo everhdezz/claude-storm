@@ -336,7 +336,7 @@ mod tests {
         let (status, reply) = post(&url, json!({"jsonrpc":"2.0","method":"notifications/initialized"})).await;
         assert_eq!((status, reply), (202, None));
         let (_, reply) = post(&url, json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await;
-        assert_eq!(reply.unwrap()["result"]["tools"].as_array().unwrap().len(), 7);
+        assert_eq!(reply.unwrap()["result"]["tools"].as_array().unwrap().len(), 15);
 
         let wrong = url.rsplit_once('/').unwrap().0.to_string() + "/nope";
         assert_eq!(post(&wrong, json!({"jsonrpc":"2.0","id":3,"method":"ping"})).await.0, 404);
@@ -351,6 +351,26 @@ mod tests {
 
         let (_, reply) = post(&url, call("service_stop", json!({"repo":"web","command":"dev"}))).await;
         assert_eq!(reply.unwrap()["result"]["isError"], false);
+
+        let text = |reply: Option<Value>| reply.unwrap()["result"]["content"][0]["text"].as_str().unwrap().to_string();
+        let wiki_root = crate::commands::wiki::root(app.handle(), "p").unwrap();
+        let _ = std::fs::remove_dir_all(&wiki_root);
+        post(&url, call("wiki_create", json!({"name":"Guides","kind":"folder"}))).await;
+        let (_, reply) = post(&url, call("wiki_create", json!({"parent":"Guides","name":"Setup","content":"# Setup\nRun npm install"}))).await;
+        assert_eq!(text(reply), "Created Guides/Setup.md");
+        let tree = text(post(&url, call("wiki_tree", json!({}))).await.1);
+        assert!(tree.starts_with("Guides/\nGuides/Setup.md  wiki://"), "{tree}");
+        let reference = format!("[Setup]({})", tree.rsplit_once("  ").unwrap().1);
+        post(&url, call("wiki_write", json!({"path":"Guides/Setup","content":"# Setup\nRun pnpm install"}))).await;
+        assert!(text(post(&url, call("wiki_search", json!({"query":"PNPM"}))).await.1).contains("2: Run pnpm install"));
+        assert_eq!(text(post(&url, call("wiki_move", json!({"path":"Guides/Setup.md","parent":""}))).await.1), "Moved to Setup.md");
+        assert_eq!(text(post(&url, call("wiki_read", json!({"path":"Setup"}))).await.1), "# Setup\nRun pnpm install");
+        assert_eq!(text(post(&url, call("wiki_read", json!({"path":reference}))).await.1), "# Setup\nRun pnpm install");
+        let (_, reply) = post(&url, call("wiki_read", json!({"path":"../secret"}))).await;
+        assert_eq!(reply.unwrap()["result"]["isError"], true);
+        post(&url, call("wiki_delete", json!({"path":"Guides"}))).await;
+        assert!(text(post(&url, call("wiki_tree", json!({}))).await.1).starts_with("Setup.md  wiki://"));
+        let _ = std::fs::remove_dir_all(&wiki_root);
         app.handle().state::<ProcessManager>().kill_all_blocking();
         let _ = std::fs::remove_dir_all(root);
     }

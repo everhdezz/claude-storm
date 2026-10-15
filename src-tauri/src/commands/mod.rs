@@ -7,4 +7,5 @@ pub mod sessions;
 pub mod settings;
 pub mod terminals;
 pub mod usage;
+pub mod wiki;
 pub mod windows;

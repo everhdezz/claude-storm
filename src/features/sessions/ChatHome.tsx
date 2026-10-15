@@ -15,6 +15,7 @@ export function ChatHome() {
   const navigate = useNavigate();
   const othersActive = sessions.some((s) => !s.archived && (s.status === "working" || s.status === "queued"));
   const [preparing, setPreparing] = useState(false);
+  const [permissionMode, setPermissionMode] = useState("acceptEdits");
 
   async function start(prompt: string, model: string | null, attachments: string[]) {
     if (project.repos.length === 0) {
@@ -28,6 +29,7 @@ export function ChatHome() {
         title,
         repoIds: project.repos.map((r) => r.id),
         model,
+        permissionMode,
         mode: othersActive ? "isolated" : "direct",
       });
       await sendSessionPrompt(session.id, prompt, null, attachments);
@@ -65,6 +67,8 @@ export function ChatHome() {
         <Composer
           placeholder={t("Ask Claude something… (Enter to send, Shift+Enter for a new line)")}
           defaultModel={null}
+          permissionMode={permissionMode}
+          onPermissionModeChange={setPermissionMode}
           autoFocus
           onSend={start}
         />

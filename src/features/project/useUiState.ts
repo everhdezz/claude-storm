@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { saveProjectUiState } from "../../api/projects";
 import type { LayoutPrefs } from "./useLayoutPrefs";
+import type { WikiUiState } from "../wiki/WikiView";
 
 /** Everything a project window restores when it is reopened. */
 export interface ProjectUiState {
@@ -11,6 +12,7 @@ export interface ProjectUiState {
   expandedRepos?: string[];
   showArchived?: boolean;
   runTarget?: string | null;
+  wiki?: WikiUiState;
 }
 
 const DEBOUNCE_MS = 400;

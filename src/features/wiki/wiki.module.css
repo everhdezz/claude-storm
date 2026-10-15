@@ -1,0 +1,132 @@
+.treeRoot {
+  min-height: 100%;
+  padding: 0 6px 12px;
+  border-radius: 6px;
+}
+
+.treeRoot[data-over] {
+  outline: 1px dashed var(--mantine-color-indigo-4);
+  outline-offset: -2px;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding-right: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.treeRow:hover {
+  background: var(--dh-hover);
+}
+
+.treeRow[data-selected] {
+  background: var(--dh-selected);
+}
+
+.treeRow[data-over] {
+  background: color-mix(in srgb, var(--mantine-color-indigo-7) 45%, transparent);
+  outline: 1px solid var(--mantine-color-indigo-4);
+}
+
+.chevron {
+  width: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+  transition: transform 120ms ease;
+}
+
+.chevron[data-open] {
+  transform: rotate(90deg);
+}
+
+.folderIcon {
+  flex-shrink: 0;
+  color: var(--mantine-color-yellow-5);
+}
+
+.docIcon {
+  flex-shrink: 0;
+  color: var(--mantine-color-gray-5);
+}
+
+.rowActions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.treeRow:hover .rowActions,
+.rowActions:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+.headerButton {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--mantine-color-gray-5);
+}
+
+.headerButton:hover {
+  background: var(--dh-hover);
+  color: var(--mantine-color-gray-2);
+}
+
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pageInner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 18px 24px 120px;
+}
+
+.pageMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 18px;
+  padding: 0 54px;
+}
+
+.title {
+  width: 100%;
+  margin: 28px 0 10px;
+  padding: 0 54px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--mantine-color-gray-1);
+  font-family: inherit;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.title::placeholder {
+  color: var(--mantine-color-dark-3);
+}
+
+/* Blend the editor into the island instead of BlockNote's own dark background. */
+.editor {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-background: var(--mantine-color-dark-6);
+}
+
+.editor :global(.bn-editor) {
+  background: transparent;
+  padding-inline: 54px;
+}

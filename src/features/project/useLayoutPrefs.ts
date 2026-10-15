@@ -2,17 +2,20 @@ import { useEffect, useRef, useState } from "react";
 
 export type LeftTool = "projects" | "chats";
 export type BottomTool = "terminal" | "services";
+/** What the main area shows; picked on the right stripe, one at a time. */
+export type MainView = "chat" | "wiki";
 
 export interface LayoutPrefs {
   leftTools: LeftTool[];
   bottom: BottomTool | null;
+  main: MainView;
   leftWidth: number;
   leftTopHeight: number;
   bottomHeight: number;
 }
 
 const ORDER: LeftTool[] = ["projects", "chats"];
-const DEFAULTS: LayoutPrefs = { leftTools: ["projects", "chats"], bottom: null, leftWidth: 300, leftTopHeight: 320, bottomHeight: 300 };
+const DEFAULTS: LayoutPrefs = { leftTools: ["projects", "chats"], bottom: null, main: "chat", leftWidth: 300, leftTopHeight: 320, bottomHeight: 300 };
 
 /** Tool window visibility and sizes; starts from the project's saved layout and reports every change. */
 export function useLayoutPrefs(saved: Partial<LayoutPrefs> | undefined, onChange: (prefs: LayoutPrefs) => void) {
@@ -44,9 +47,13 @@ export function useLayoutPrefs(saved: Partial<LayoutPrefs> | undefined, onChange
     setPrefs((p) => ({ ...p, bottom: tool }));
   }
 
+  function showMain(main: MainView) {
+    setPrefs((p) => ({ ...p, main }));
+  }
+
   function resize(patch: Partial<Pick<LayoutPrefs, "leftWidth" | "bottomHeight" | "leftTopHeight">>) {
     setPrefs((p) => ({ ...p, ...patch }));
   }
 
-  return { prefs, toggleLeft, toggleBottom, showBottom, resize };
+  return { prefs, toggleLeft, toggleBottom, showBottom, showMain, resize };
 }

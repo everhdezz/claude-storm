@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Center, Loader, Text } from "@mantine/core";
-import { IconFolder, IconMessageCircle, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
-import { Outlet, useNavigate, useParams } from "react-router";
+import { IconBook2, IconFolder, IconMessageCircle, IconMessages, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
+import { Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { isActive } from "../../api/processes";
 import { Island } from "../../components/ide/Island";
 import { Splitter } from "../../components/ide/Splitter";
@@ -16,10 +16,11 @@ import { ProjectsTool } from "../projects-tool/ProjectsTool";
 import { RunTargetPicker, ServicesTool } from "../services/ServicesTool";
 import { StatusBar } from "../status/StatusBar";
 import { TerminalTool } from "../terminal/TerminalTool";
+import { WikiView } from "../wiki/WikiView";
 import { ProjectContext } from "./ProjectContext";
 import { ProjectTitleBar } from "./ProjectTitleBar";
 import { useGitStatuses } from "./useGitStatuses";
-import { type BottomTool, type LeftTool, useLayoutPrefs } from "./useLayoutPrefs";
+import { type BottomTool, type LeftTool, type MainView, useLayoutPrefs } from "./useLayoutPrefs";
 import { useProject } from "./useProject";
 import { useUiState } from "./useUiState";
 import type { Project } from "../../types";
@@ -62,6 +63,11 @@ function ProjectWorkspace({ project }: { project: Project }) {
   const [savedRunTarget, setSavedRunTarget] = useState<string | null>(ui.initial.runTarget ?? null);
   const [terminalRequest, setTerminalRequest] = useState<{ cwd: string; seq: number } | null>(null);
   const restored = useRef(false);
+  // The wiki mounts the first time it is shown and then stays mounted, keeping the open page.
+  const [wikiOpened, setWikiOpened] = useState(layout.prefs.main === "wiki");
+  if (layout.prefs.main === "wiki" && !wikiOpened) setWikiOpened(true);
+  // Reopening the last session on startup must not switch away from a remembered wiki view.
+  const restoringPath = useRef(false);
 
   useEffect(() => {
     if (restored.current) return;
@@ -72,6 +78,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
     }
     if (sessions.some((s) => s.id === wanted)) {
       restored.current = true;
+      restoringPath.current = true;
       navigate(`/project/${project.id}/session/${wanted}`, { replace: true });
     }
   }, [sessions, sessionId, navigate, project.id, ui.initial.sessionId]);
@@ -79,6 +86,16 @@ function ProjectWorkspace({ project }: { project: Project }) {
   useEffect(() => {
     if (restored.current) ui.save({ sessionId });
   }, [sessionId, ui]);
+
+  // Opening a chat (from the Chats list or a notification) brings the chat back over the wiki.
+  const { pathname } = useLocation();
+  const lastPath = useRef(pathname);
+  useEffect(() => {
+    if (lastPath.current === pathname) return;
+    lastPath.current = pathname;
+    if (restoringPath.current) restoringPath.current = false;
+    else layout.showMain("chat");
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     ui.save({ selectedService });
@@ -101,6 +118,11 @@ function ProjectWorkspace({ project }: { project: Project }) {
   const bottomItems: StripeItem<BottomTool>[] = [
     { id: "terminal", label: "Terminal", icon: IconTerminal2 },
     { id: "services", label: t("Services"), icon: IconPlayerPlay, badge: running > 0 },
+  ];
+
+  const mainItems: StripeItem<MainView>[] = [
+    { id: "chat", label: "Chat", icon: IconMessages, badge: sessionsWorking && prefs.main !== "chat" },
+    { id: "wiki", label: "Wiki", icon: IconBook2 },
   ];
 
   function revealService(processId: string) {
@@ -180,9 +202,11 @@ function ProjectWorkspace({ project }: { project: Project }) {
                 onChange={(leftWidth) => layout.resize({ leftWidth })}
               />
             )}
-            <Island style={{ flex: 1 }}>
+            {/* Chat stays mounted while the wiki is shown, so drafts and scroll survive the switch. */}
+            <Island style={{ flex: 1, display: prefs.main === "chat" ? undefined : "none" }}>
               <Outlet />
             </Island>
+            {wikiOpened && <WikiView hidden={prefs.main !== "wiki"} />}
           </div>
           {prefs.bottom && (
             <Splitter
@@ -208,6 +232,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
             </Island>
           )}
         </div>
+        <ToolStripe side="right" top={mainItems} bottom={[]} activeTop={[prefs.main]} activeBottom={null} onTop={layout.showMain} onBottom={() => undefined} />
         <SettingsModal section={settingsSection} onSection={setSettingsSection} onClose={() => setSettingsSection(null)} />
         <StatusBar
           projectId={project.id}
