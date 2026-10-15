@@ -132,13 +132,17 @@ async fn fetch(target: UsageTarget) -> UsageSnapshot {
             let error = bars.is_empty().then(|| "Could not parse the /usage output; showing raw text.".to_string());
             UsageSnapshot { profile_key: key, fetched_at: now, bars, raw_screen: out.screen, error, billing: "subscription" }
         }
-        Err(err) => UsageSnapshot {
-            profile_key: key,
-            fetched_at: now,
-            bars: Vec::new(),
-            raw_screen: String::new(),
-            error: Some(err.to_string()),
-            billing: "subscription",
-        },
+        Err(err) => {
+            let full = err.to_string();
+            let (headline, rest) = full.split_once("\n\n").unwrap_or((full.as_str(), ""));
+            UsageSnapshot {
+                profile_key: key,
+                fetched_at: now,
+                bars: Vec::new(),
+                raw_screen: rest.trim().to_string(),
+                error: Some(headline.trim().to_string()),
+                billing: "subscription",
+            }
+        }
     }
 }

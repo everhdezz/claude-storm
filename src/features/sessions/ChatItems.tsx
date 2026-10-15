@@ -37,12 +37,9 @@ export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: 
           case "toolUse":
             return <ToolBlock key={index} use={item} result={results.get(item.id)} />;
           case "result":
-            return (
-              <Text key={index} size="xs" c={item.ok ? "dimmed" : "red.4"} className={classes.resultLine}>
-                {item.ok ? "Turno terminado" : "Terminó con error"}
-                {item.durationMs != null && ` · ${(item.durationMs / 1000).toFixed(1)} s`}
-                {item.turns != null && ` · ${item.turns} pasos`}
-                {item.costUsd != null && ` · $${item.costUsd.toFixed(4)}`}
+            return item.ok ? null : (
+              <Text key={index} size="xs" c="red.4" className={classes.resultLine}>
+                Claude terminó con error{item.text ? `: ${item.text}` : ""}
               </Text>
             );
           case "notice":

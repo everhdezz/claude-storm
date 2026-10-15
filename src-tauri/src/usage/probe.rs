@@ -115,25 +115,31 @@ fn drive(
     command: &str,
     shown: &dyn Fn(&str) -> bool,
 ) -> AppResult<()> {
-    let ready = screen.wait(Duration::from_secs(30), |t| {
-        t.contains("for shortcuts") || t.contains('❯') || t.contains("trust this folder") || t.contains("trust the files") || login_needed(t)
-    });
-    let mut text = screen.text();
-    if accept_trust && needs_trust(&text) {
-        accept_trust_dialog(screen, writer)?;
-        text = screen.text();
-    }
-    if !ready {
-        return Err(AppError::msg(format!("Claude Code did not become ready in time.\n\n{}", text.trim())));
-    }
-    if needs_trust(&text) {
-        return Err(AppError::msg(format!(
-            "Claude Code asks to trust the working folder. Open `claude` once in that folder and accept, then retry.\n\n{}",
-            text.trim()
-        )));
-    }
-    if login_needed(&text) {
-        return Err(AppError::msg("This Claude profile is not logged in."));
+    let deadline = std::time::Instant::now() + Duration::from_secs(45);
+    loop {
+        screen.pump();
+        let text = screen.text();
+        if needs_trust(&text) {
+            if !accept_trust {
+                return Err(AppError::msg(format!(
+                    "Claude Code asks to trust the working folder. Open `claude` once in that folder and accept, then retry.\n\n{}",
+                    text.trim()
+                )));
+            }
+            accept_trust_dialog(screen, writer)?;
+        } else if first_run_screen(&text) {
+            writer.write_all(b"\r")?;
+            writer.flush()?;
+            std::thread::sleep(Duration::from_millis(1500));
+        } else if login_needed(&text) {
+            return Err(AppError::msg("This Claude profile is not logged in."));
+        } else if prompt_ready(&text) {
+            break;
+        }
+        if std::time::Instant::now() > deadline {
+            return Err(AppError::msg(format!("Claude Code did not become ready in time.\n\n{}", text.trim())));
+        }
+        std::thread::sleep(Duration::from_millis(200));
     }
     std::thread::sleep(Duration::from_millis(1200));
     for ch in command.chars() {
@@ -170,6 +176,19 @@ fn accept_trust_dialog(screen: &mut Screen, writer: &mut Box<dyn Write + Send>) 
     writer.flush()?;
     screen.wait(Duration::from_secs(20), |t| !needs_trust(t) && (t.contains('❯') || t.contains("for shortcuts")));
     Ok(())
+}
+
+/// First-run screens of a new profile that only need Enter (theme picker, security notes).
+fn first_run_screen(text: &str) -> bool {
+    text.contains("Choose the text style") || text.contains("Press Enter to continue")
+}
+
+/// The input prompt box is visible and no dialog or menu is on screen.
+fn prompt_ready(text: &str) -> bool {
+    if first_run_screen(text) || needs_trust(text) || text.contains("Enter to confirm") {
+        return false;
+    }
+    text.contains("for shortcuts") || (text.contains("────") && text.lines().any(|l| l.trim_start().starts_with('❯')))
 }
 
 /// Detects Claude Code's folder trust dialog.
@@ -264,5 +283,68 @@ mod manual {
             println!("{} | {} | {}", m.id, m.label, m.description);
         }
         assert!(models.len() >= 4);
+    }
+}
+
+#[cfg(test)]
+mod screen_tests {
+    use super::{first_run_screen, prompt_ready};
+
+    const THEME: &str = "Welcome to Claude Code v2.1.300\n Choose the text style that looks best with your terminal\n ❯ ✔ Dark mode\n     Light mode";
+    const NOTES: &str = "Welcome to Claude Code\n Security notes:\n 1. Claude can make mistakes.\n Press Enter to continue…";
+    const PROMPT: &str = "────────────\n❯\u{a0}Try \"fix lint errors\"\n────────────\n  ⏵⏵ auto mode on";
+
+    #[test]
+    fn first_run_screens_are_not_the_prompt() {
+        assert!(first_run_screen(THEME) && !prompt_ready(THEME));
+        assert!(first_run_screen(NOTES) && !prompt_ready(NOTES));
+    }
+
+    #[test]
+    fn real_prompt_box_is_ready() {
+        assert!(prompt_ready(PROMPT));
+        assert!(!first_run_screen(PROMPT));
+    }
+}
+
+#[cfg(test)]
+mod onboarding_capture {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+
+    /// Prints the first screens of a profile: `DEVHUB_PROFILE_DIR=<dir> cargo test capture_first_run -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn capture_first_run() {
+        let profile = std::env::var("DEVHUB_PROFILE_DIR").expect("set DEVHUB_PROFILE_DIR");
+        let cwd = std::env::temp_dir().join("devhub-onboarding-probe");
+        std::fs::create_dir_all(&cwd).unwrap();
+        let claude = crate::shell_env::which("claude").unwrap();
+        let mut env = std::collections::HashMap::new();
+        env.insert("CLAUDE_CONFIG_DIR".to_string(), profile);
+        let proc = crate::pty::spawn(&claude.to_string_lossy(), &[], &cwd, &env, crate::accounts::AUTH_VARS, 50, 120).unwrap();
+        let mut reader = proc.master.try_clone_reader().unwrap();
+        let mut writer = proc.master.take_writer().unwrap();
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = buf.clone();
+        std::thread::spawn(move || {
+            let mut chunk = [0u8; 8192];
+            while let Ok(n) = reader.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                sink.lock().unwrap().extend_from_slice(&chunk[..n]);
+            }
+        });
+        for round in 0..6 {
+            std::thread::sleep(Duration::from_secs(4));
+            let mut parser = vt100::Parser::new(50, 120, 0);
+            parser.process(&buf.lock().unwrap());
+            println!("===== round {round} =====\n{}", parser.screen().contents().lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join("\n"));
+            let _ = writer.write_all(b"\r");
+            let _ = writer.flush();
+        }
+        let mut child = proc.child;
+        let _ = child.kill();
     }
 }

@@ -38,8 +38,7 @@ import { useProjectContext } from "../project/ProjectContext";
 import { timeUntil } from "../status/useClaudeUsage";
 import { WizardSteps } from "./WizardSteps";
 
-type Step = "data" | "prepare" | "authorize" | "verify" | "done";
-const STEP_INDEX: Record<Step, number> = { data: 0, prepare: 1, authorize: 2, verify: 4, done: 5 };
+type Step = "data" | "prepare" | "authorize" | "code" | "verify" | "done";
 
 interface Failure {
   message: string;
@@ -194,16 +193,20 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
     startLogin(target);
   }
 
-  const active = step === "authorize" && codeOpen ? 3 : STEP_INDEX[step];
+  const steps: { id: Step; label: string }[] = [
+    { id: "data", label: "Datos" },
+    { id: "prepare", label: "Perfil" },
+    { id: "authorize", label: "Autoriza" },
+    ...(codeOpen ? [{ id: "code" as Step, label: "Código" }] : []),
+    { id: "verify", label: "Verifica" },
+    { id: "done", label: "Listo" },
+  ];
+  const current: Step = step === "authorize" && codeOpen ? "code" : step;
+  const active = steps.findIndex((s) => s.id === current);
 
   return (
     <Modal opened={opened} onClose={cancel} title={reconnect ? `Reconectar ${reconnect.alias}` : "Agregar cuenta de Claude"} size={560} centered closeOnClickOutside={false}>
-      <WizardSteps
-        labels={["Datos", "Perfil", "Autoriza", "Código", "Verifica", "Listo"]}
-        active={active}
-        optional={[3]}
-        skipped={codeOpen ? [] : [3]}
-      />
+      <WizardSteps labels={steps.map((s) => s.label)} active={active} />
 
       {failure ? (
         <Stack>
@@ -369,7 +372,7 @@ export function LoginWizard({ opened, reconnect, onClose, onCreated }: LoginWiza
               </Stack>
             ) : (
               <Text size="xs" c="dimmed">
-                {usage?.error ?? "El uso aparecerá en el footer en cuanto Claude Code lo reporte."}
+                El uso de esta cuenta aparecerá en el footer en cuanto Claude Code lo reporte.
               </Text>
             )}
           </Paper>

@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router";
 import {
   isBusy,
   modelLabel,
+  PERMISSION_OPTIONS,
   sendSessionPrompt,
   sessionCommit,
   sessionMerge,
@@ -215,7 +216,7 @@ export function SessionView() {
           key={session.id}
           placeholder={session.status === "queued" ? "En cola…" : "Continúa la conversación…"}
           defaultModel={session.model}
-          context={`Login por defecto · ${modelLabel(session.model, settings.catalog)} · ${session.permissionMode}`}
+          context={PERMISSION_OPTIONS.find((o) => o.value === session.permissionMode)?.label ?? session.permissionMode}
           busy={isBusy(session)}
           autoFocus
           onSend={send}

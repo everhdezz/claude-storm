@@ -22,8 +22,7 @@
 }
 
 .step[data-state="done"]:not(:first-child)::before,
-.step[data-state="active"]:not(:first-child)::before,
-.step[data-state="skipped"]:not(:first-child)::before {
+.step[data-state="active"]:not(:first-child)::before {
   background: var(--mantine-color-indigo-6);
 }
 
@@ -40,10 +39,6 @@
   border: 2px solid var(--mantine-color-dark-4);
 }
 
-.step[data-optional] .dot {
-  border-style: dashed;
-}
-
 .step[data-state="active"] .dot {
   color: white;
   border-color: var(--mantine-color-indigo-5);
@@ -54,11 +49,6 @@
   color: white;
   border-color: var(--mantine-color-indigo-6);
   background: var(--mantine-color-indigo-6);
-}
-
-.step[data-state="skipped"] .dot {
-  color: var(--mantine-color-dark-2);
-  border-color: var(--mantine-color-dark-4);
 }
 
 .label {
