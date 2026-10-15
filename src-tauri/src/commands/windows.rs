@@ -63,8 +63,8 @@ pub fn show_welcome<R: Runtime>(app: &AppHandle<R>) -> AppResult<()> {
     }
     WebviewWindowBuilder::new(app, WELCOME_LABEL, WebviewUrl::App("index.html".into()))
         .title("Bienvenido a claude-storm")
-        .inner_size(720.0, 480.0)
-        .min_inner_size(560.0, 380.0)
+        .inner_size(620.0, 540.0)
+        .min_inner_size(520.0, 420.0)
         .center()
         .build()?;
     Ok(())
