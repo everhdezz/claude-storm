@@ -268,7 +268,7 @@ interface RepoNodeProps {
 function RepoNode({ repo, onEdit, groups, currentGroupId, onMove }: RepoNodeProps) {
   const { project, gitStatuses, gitErrors, processes, openTerminalAt } = useProjectContext();
   const run = useRunCommand();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const procs = repo.commands.map((c) => processes[processKey(repo.id, c.id)]).filter((p) => !!p);
   const isNode = NODE_FRAMEWORKS.includes(repo.framework);
   const devCommand = repo.commands.find((c) => c.longRunning);
