@@ -2,6 +2,12 @@
   "name": "claude-storm",
   "private": true,
   "version": "0.5.0",
+  "license": "Apache-2.0",
+  "author": "Ever Hernandez (@everhdezz)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/everhdezz/claude-storm.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

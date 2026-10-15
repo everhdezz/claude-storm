@@ -1,7 +1,10 @@
 [package]
 name = "claude-storm"
 version = "0.5.0"
-description = "Personal console to group repos by project, run their servers and drive Claude Code"
+description = "Desktop console to run many Claude Code sessions in parallel across the repos of a project"
+license = "Apache-2.0"
+authors = ["Ever Hernandez (@everhdezz)"]
+repository = "https://github.com/everhdezz/claude-storm"
 edition = "2021"
 
 [lib]

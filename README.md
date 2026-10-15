@@ -11,6 +11,7 @@ Chat with Claude, let it work in isolated git worktrees, run your dev servers, r
 ![platform](https://img.shields.io/badge/macOS-tested-black?logo=apple)
 ![built with](https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20React-24C8DB?logo=tauri)
 ![languages](https://img.shields.io/badge/i18n-English%20%7C%20Espa%C3%B1ol-green)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 <img src="docs/screenshots/session.png" alt="A ClaudeStorm session: Claude asks for permission to use WebFetch and asks a multiple-choice question, while two follow-up messages wait in the queue" width="900" />
 
@@ -85,15 +86,15 @@ Every session gets a built-in, local **ClaudeStorm MCP server** with tools to li
 
 ### Install a release
 
-Download the latest `.dmg` from the Releases page, open it and drag **ClaudeStorm** into Applications.
+Download the latest `.dmg` from the [Releases page](https://github.com/everhdezz/claude-storm/releases/latest), open it and drag **ClaudeStorm** into Applications.
 
 > The alpha builds are not signed or notarized yet. The first time, right-click the app → **Open**, or allow it in **System Settings → Privacy & Security**.
 
 ### Build from source
 
 ```bash
-git clone <this-repo>
-cd claudestorm
+git clone https://github.com/everhdezz/claude-storm.git
+cd claude-storm
 npm install
 
 # Run the desktop app in development
@@ -195,7 +196,10 @@ To add a language:
 
 ## License
 
-Not chosen yet; it will be published before the first public release. Until then, please open an issue before reusing the code.
+ClaudeStorm is licensed under the [Apache License 2.0](LICENSE).
+Copyright 2026 Ever Hernandez ([@everhdezz](https://github.com/everhdezz)). See [NOTICE](NOTICE).
+
+The ClaudeStorm name and logo are not covered by the license (Apache-2.0, section 6).
 
 ## Disclaimer
 
