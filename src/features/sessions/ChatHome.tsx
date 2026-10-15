@@ -13,20 +13,20 @@ export function ChatHome() {
   const navigate = useNavigate();
   const othersActive = sessions.some((s) => !s.archived && (s.status === "working" || s.status === "queued"));
 
-  async function start(prompt: string, model: string | null) {
+  async function start(prompt: string, model: string | null, attachments: string[]) {
     if (project.repos.length === 0) {
       notifyError("Agrega al menos un repo al proyecto para chatear con Claude sobre él.", "Sin repos");
       return;
     }
     try {
-      const title = prompt.split("\n")[0]!.slice(0, 60);
+      const title = (prompt.split("\n")[0] || attachments[0]?.split(/[\\/]/).pop() || "Documentos").slice(0, 60);
       const session = await createSession(project.id, {
         title,
         repoIds: project.repos.map((r) => r.id),
         model,
         mode: othersActive ? "isolated" : "direct",
       });
-      await sendSessionPrompt(session.id, prompt);
+      await sendSessionPrompt(session.id, prompt, null, attachments);
       navigate(`/project/${project.id}/session/${session.id}`);
     } catch (err) {
       notifyError(err, "No se pudo iniciar la sesión");

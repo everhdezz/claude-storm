@@ -2,22 +2,23 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { addRepos } from "../../api/repos";
 import { notifyError, notifySuccess } from "../../hooks/notify";
 
-/** Opens the native folder picker and returns the chosen path, if any. */
-export async function pickFolder(title: string): Promise<string | null> {
-  const picked = await open({ directory: true, multiple: false, title });
-  return typeof picked === "string" ? picked : null;
-}
-
-/** Action that adds one folder picked with the native dialog to the project. */
+/** Action that adds one or several folders picked with the native dialog (Cmd/Shift to multi-select). */
 export function useAddFolder(projectId: string) {
   return async function addFolder() {
     try {
-      const path = await pickFolder("Selecciona el repo a agregar");
-      if (!path) return;
-      const added = await addRepos(projectId, [path]);
-      notifySuccess(added[0] ? `Agregado ${added[0].name}` : "Ese repo ya estaba en el proyecto");
+      const picked = await open({ directory: true, multiple: true, title: "Selecciona uno o varios repos" });
+      const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+      if (paths.length === 0) return;
+      const added = await addRepos(projectId, paths);
+      const skipped = paths.length - added.length;
+      if (added.length === 0) {
+        notifySuccess(paths.length === 1 ? "Ese repo ya estaba en el proyecto" : "Esos repos ya estaban en el proyecto");
+        return;
+      }
+      const note = skipped ? ` (${skipped} ya estaba${skipped > 1 ? "n" : ""})` : "";
+      notifySuccess(`Agregado${added.length > 1 ? "s" : ""}: ${added.map((r) => r.name).join(", ")}${note}`);
     } catch (err) {
-      notifyError(err, "No se pudo agregar el repo");
+      notifyError(err, "No se pudieron agregar los repos");
     }
   };
 }

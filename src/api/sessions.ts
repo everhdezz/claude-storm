@@ -29,8 +29,8 @@ export function sessionHistory(sessionId: string): Promise<ChatItem[]> {
 }
 
 /** Sends a prompt, optionally overriding the model for this prompt only. */
-export function sendSessionPrompt(sessionId: string, prompt: string, model?: string | null): Promise<Session> {
-  return call("send_session_prompt", { sessionId, prompt, model: model ?? null });
+export function sendSessionPrompt(sessionId: string, prompt: string, model?: string | null, attachments: string[] = []): Promise<Session> {
+  return call("send_session_prompt", { sessionId, prompt, model: model ?? null, attachments });
 }
 
 /** Stops a working or queued session. */

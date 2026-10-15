@@ -56,7 +56,7 @@ export function SessionView() {
   const repoNames = session.repoIds.map((id) => project.repos.find((r) => r.id === id)?.name).filter(Boolean);
   const isolated = session.mode === "isolated";
 
-  async function send(prompt: string, model: string | null) {
+  async function send(prompt: string, model: string | null, attachments: string[]) {
     const conflicts = conflictingSessions(session!, sessions);
     if (conflicts.length > 0) {
       const ok = await confirm(
@@ -67,7 +67,7 @@ export function SessionView() {
       if (!ok) return;
     }
     try {
-      await sendSessionPrompt(session!.id, prompt, model);
+      await sendSessionPrompt(session!.id, prompt, model, attachments);
     } catch (err) {
       notifyError(err, "No se pudo enviar");
     }

@@ -19,6 +19,8 @@ pub enum ChatItem {
         model: Option<String>,
         #[serde(default)]
         account: Option<String>,
+        #[serde(default)]
+        attachments: Vec<String>,
         at: DateTime<Utc>,
     },
     Text { text: String },

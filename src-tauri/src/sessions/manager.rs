@@ -63,15 +63,27 @@ impl SessionManager {
     }
 
     /// Records the prompt and runs it now, or queues it when the parallel limit is reached.
-    pub fn send<R: Runtime>(&self, app: &AppHandle<R>, session_id: &str, prompt: String, model: Option<String>) -> AppResult<Session> {
+    pub fn send<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        session_id: &str,
+        prompt: String,
+        model: Option<String>,
+        attachments: Vec<String>,
+    ) -> AppResult<Session> {
         let store = app.state::<Store>();
         let session = store.session(session_id)?;
         if self.is_running(session_id) || session.status == SessionStatus::Queued {
             return Err(AppError::msg("This session is already working; wait or stop it first."));
         }
+        let copied = copy_attachments(&attachments_dir(&store.dir(), session_id), &attachments)?;
+        let names: Vec<String> = copied.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect();
+        let user_prompt = prompt.clone();
+        let prompt = with_attachment_list(prompt, &copied);
         let account = project_account(&store, &session.project_id)?;
         let item = ChatItem::Prompt {
-            text: prompt.clone(),
+            text: user_prompt,
+            attachments: names,
             model: model.clone().or(session.model.clone()).or(account.default_model.clone()),
             account: Some(account.alias.clone()),
             at: Utc::now(),
@@ -194,6 +206,10 @@ impl SessionManager {
         }
         for dir in dirs.iter().skip(1) {
             cmd.arg("--add-dir").arg(dir);
+        }
+        let attachments = attachments_dir(&store.dir(), session_id);
+        if attachments.is_dir() {
+            cmd.arg("--add-dir").arg(&attachments);
         }
         cmd.current_dir(&cwd)
             .stdin(std::process::Stdio::piped())
@@ -358,6 +374,44 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
     }
 }
 
+/// Folder where a session's attached documents are copied.
+pub fn attachments_dir(app_data: &std::path::Path, session_id: &str) -> PathBuf {
+    app_data.join("sessions").join(session_id).join("attachments")
+}
+
+/// Copies attached files into the session folder (unique names) and returns their new paths.
+fn copy_attachments(dir: &std::path::Path, files: &[String]) -> AppResult<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    for file in files {
+        let src = std::path::Path::new(file);
+        if !src.is_file() {
+            return Err(AppError::msg(format!("{file} is not a file (folders cannot be attached).")));
+        }
+        std::fs::create_dir_all(dir)?;
+        let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "archivo".into());
+        let mut target = dir.join(&name);
+        let mut n = 2;
+        while target.exists() {
+            let stem = std::path::Path::new(&name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let ext = std::path::Path::new(&name).extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+            target = dir.join(format!("{stem} ({n}){ext}"));
+            n += 1;
+        }
+        std::fs::copy(src, &target)?;
+        out.push(target);
+    }
+    Ok(out)
+}
+
+/// Appends the list of attached files so Claude reads them.
+fn with_attachment_list(prompt: String, files: &[PathBuf]) -> String {
+    if files.is_empty() {
+        return prompt;
+    }
+    let list: Vec<String> = files.iter().map(|f| format!("- {}", f.display())).collect();
+    format!("{prompt}\n\nArchivos adjuntos (léelos si son relevantes):\n{}", list.join("\n"))
+}
+
 /// The Claude account selected by a project; sessions refuse to run without one.
 fn project_account(store: &Store, project_id: &str) -> AppResult<crate::models::ClaudeAccount> {
     let project = store.project(project_id)?;
@@ -372,6 +426,30 @@ pub fn working_dir(app_data: &std::path::Path, session: &Session, repo_path: &st
     match session.mode {
         crate::models::SessionMode::Direct => PathBuf::from(repo_path),
         crate::models::SessionMode::Isolated => app_data.join("worktrees").join(&session.project_id).join(&session.id).join(repo_name),
+    }
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+
+    #[test]
+    fn copies_with_unique_names_and_lists_them() {
+        let root = std::env::temp_dir().join(format!("devhub-attach-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let a = root.join("src/spec.pdf");
+        std::fs::write(&a, "x").unwrap();
+        let dir = root.join("att");
+        let first = copy_attachments(&dir, &[a.to_string_lossy().to_string()]).unwrap();
+        let second = copy_attachments(&dir, &[a.to_string_lossy().to_string()]).unwrap();
+        assert_eq!(first[0].file_name().unwrap(), "spec.pdf");
+        assert_eq!(second[0].file_name().unwrap(), "spec (2).pdf");
+        let prompt = with_attachment_list("revisa".into(), &second);
+        assert!(prompt.starts_with("revisa\n\nArchivos adjuntos"));
+        assert!(prompt.contains("spec (2).pdf"));
+        assert!(copy_attachments(&dir, &[root.join("src").to_string_lossy().to_string()]).is_err());
+        let _ = std::fs::remove_dir_all(root);
     }
 }
 
@@ -473,23 +551,34 @@ mod e2e {
 
         let manager = handle.state::<SessionManager>();
 
-        manager.send(&handle, &session_id, "Lee nota.txt y dime solo el número.".into(), None).unwrap();
+        manager.send(&handle, &session_id, "Lee nota.txt y dime solo el número.".into(), None, vec![]).unwrap();
         let first = wait_idle(&store, &session_id).await;
         let after_first = store.session(&session_id).unwrap();
         println!("first: {first:?} summary={:?} err={:?}", after_first.summary, after_first.last_error);
         assert_eq!(first, SessionStatus::Waiting);
         assert!(after_first.has_conversation);
 
-        manager.send(&handle, &session_id, "¿Qué número me dijiste antes? Responde solo el número.".into(), None).unwrap();
+        manager.send(&handle, &session_id, "¿Qué número me dijiste antes? Responde solo el número.".into(), None, vec![]).unwrap();
         let second = wait_idle(&store, &session_id).await;
         let after_second = store.session(&session_id).unwrap();
         println!("second: {second:?} summary={:?}", after_second.summary);
         assert!(after_second.summary.unwrap_or_default().contains("7381"), "resume lost context");
 
+        let outside = root.join("fuera.txt");
+        std::fs::write(&outside, "el código secreto es 5521\n").unwrap();
+        manager
+            .send(&handle, &session_id, "Dime solo el código secreto del archivo adjunto.".into(), None, vec![outside.to_string_lossy().to_string()])
+            .unwrap();
+        let third = wait_idle(&store, &session_id).await;
+        let after_third = store.session(&session_id).unwrap();
+        println!("third: {third:?} summary={:?}", after_third.summary);
+        assert!(after_third.summary.unwrap_or_default().contains("5521"), "attachment not readable");
+
         let history = History::new(&store.dir()).read(&session_id).unwrap();
         let prompts = history.iter().filter(|i| matches!(i, ChatItem::Prompt { .. })).count();
         let results = history.iter().filter(|i| matches!(i, ChatItem::Result { ok: true, .. })).count();
-        assert_eq!((prompts, results), (2, 2));
+        assert_eq!((prompts, results), (3, 3));
+        assert!(history.iter().any(|i| matches!(i, ChatItem::Prompt { attachments, .. } if attachments == &vec!["fuera.txt".to_string()])));
         let _ = std::fs::remove_dir_all(root);
     }
 }

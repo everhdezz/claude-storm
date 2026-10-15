@@ -132,7 +132,7 @@ export interface Session {
 }
 
 export type ChatItem =
-  | { kind: "prompt"; text: string; model: string | null; account?: string | null; at: string }
+  | { kind: "prompt"; text: string; model: string | null; account?: string | null; attachments?: string[]; at: string }
   | { kind: "text"; text: string }
   | { kind: "toolUse"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "toolResult"; toolUseId: string; content: string; isError: boolean }

@@ -168,11 +168,14 @@ pub async fn send_session_prompt(
     session_id: String,
     prompt: String,
     model: Option<String>,
+    attachments: Option<Vec<String>>,
 ) -> AppResult<Session> {
-    if prompt.trim().is_empty() {
+    let attachments = attachments.unwrap_or_default();
+    if prompt.trim().is_empty() && attachments.is_empty() {
         return Err(AppError::msg("Prompt is empty"));
     }
-    manager.send(&app, &session_id, prompt, model.filter(|m| !m.trim().is_empty()))
+    let prompt = if prompt.trim().is_empty() { "Revisa los archivos adjuntos.".to_string() } else { prompt };
+    manager.send(&app, &session_id, prompt, model.filter(|m| !m.trim().is_empty()), attachments)
 }
 
 /// Stops a working or queued session.
@@ -279,6 +282,7 @@ pub async fn delete_session(
         Ok(())
     })?;
     History::new(&store.dir()).remove(&session_id);
+    let _ = std::fs::remove_dir_all(store.dir().join("sessions").join(&session_id));
     let _ = tauri::Emitter::emit_to(
         &app,
         crate::commands::windows::project_window_label(&session.project_id).as_str(),

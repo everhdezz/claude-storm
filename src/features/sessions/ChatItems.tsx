@@ -4,6 +4,7 @@ import {
   IconAlertTriangle,
   IconChevronDown,
   IconChevronRight,
+  IconFile,
   IconFileText,
   IconPencil,
   IconSearch,
@@ -71,6 +72,16 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
         <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
           {item.text}
         </Text>
+        {item.attachments && item.attachments.length > 0 && (
+          <Group gap={6} mt={6}>
+            {item.attachments.map((name) => (
+              <Group key={name} gap={4} className={classes.attachment}>
+                <IconFile size={12} />
+                <Text size="xs">{name}</Text>
+              </Group>
+            ))}
+          </Group>
+        )}
       </Paper>
       <Text size="xs" c="dimmed" mt={4}>
         {[item.account, item.model ? modelLabel(item.model, catalog) : null, relativeTime(item.at)].filter(Boolean).join(" · ")}
