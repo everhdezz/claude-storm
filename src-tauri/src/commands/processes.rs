@@ -44,7 +44,7 @@ pub fn spawn_repo_command<R: tauri::Runtime>(
     let session = session.filter(|s| s.mode == SessionMode::Isolated && s.repo_ids.contains(&repo.id));
     let cwd = match session {
         Some(s) => {
-            let wd = working_dir(&store.dir(), s, &repo.path, &repo.name);
+            let wd = working_dir(&store.dir(), s, &repo.id, &repo.path, &repo.name);
             if !wd.exists() {
                 return Err(AppError::msg(format!("The worktree of \"{}\" no longer exists.", s.title)));
             }

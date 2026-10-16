@@ -295,6 +295,7 @@ mod tests {
                     pending: Vec::new(),
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
+        workspace: None,
                 });
                 Ok(())
             })
@@ -336,7 +337,7 @@ mod tests {
         let (status, reply) = post(&url, json!({"jsonrpc":"2.0","method":"notifications/initialized"})).await;
         assert_eq!((status, reply), (202, None));
         let (_, reply) = post(&url, json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await;
-        assert_eq!(reply.unwrap()["result"]["tools"].as_array().unwrap().len(), 15);
+        assert_eq!(reply.unwrap()["result"]["tools"].as_array().unwrap().len(), 16);
 
         let wrong = url.rsplit_once('/').unwrap().0.to_string() + "/nope";
         assert_eq!(post(&wrong, json!({"jsonrpc":"2.0","id":3,"method":"ping"})).await.0, 404);
@@ -371,6 +372,18 @@ mod tests {
         post(&url, call("wiki_delete", json!({"path":"Guides"}))).await;
         assert!(text(post(&url, call("wiki_tree", json!({}))).await.1).starts_with("Setup.md  wiki://"));
         let _ = std::fs::remove_dir_all(&wiki_root);
+
+        let created = root.join("api");
+        std::fs::create_dir_all(&created).unwrap();
+        let attach = text(post(&url, call("repo_attach", json!({"path":created.to_string_lossy(),"name":"backend"}))).await.1);
+        assert!(attach.contains("\"addedToProject\": true"), "{attach}");
+        let store = app.handle().state::<Store>();
+        let repo = store.project("p").unwrap().repos.into_iter().find(|r| r.name == "backend").expect("repo added to the project");
+        assert!(store.session(&session_id).unwrap().repo_ids.contains(&repo.id));
+        let again = text(post(&url, call("repo_attach", json!({"path":created.to_string_lossy()}))).await.1);
+        assert!(again.contains("\"addedToProject\": false"), "{again}");
+        assert_eq!(store.project("p").unwrap().repos.len(), 2);
+
         app.handle().state::<ProcessManager>().kill_all_blocking();
         let _ = std::fs::remove_dir_all(root);
     }

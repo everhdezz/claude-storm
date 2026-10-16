@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragOverEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ActionIcon, Menu, ScrollArea, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Anchor, Menu, ScrollArea, Text, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import {
   IconChevronDown,
@@ -25,10 +25,11 @@ import {
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { isActive, processKey, stopProcess } from "../../api/processes";
 import { getProject } from "../../api/projects";
-import { redetectRepo, removeRepo, saveRepoLayout } from "../../api/repos";
+import { gitInit, NOT_A_REPO, redetectRepo, removeRepo, saveRepoLayout } from "../../api/repos";
 import { FrameworkIcon } from "../../components/FrameworkIcon";
 import { GitBadge } from "../../components/GitBadge";
 import { BranchesMenu } from "./BranchesMenu";
+import { FileTree } from "./FileTree";
 import { Island } from "../../components/ide/Island";
 import { notifyError } from "../../hooks/notify";
 import { openInEditor } from "../../api/settings";
@@ -42,7 +43,7 @@ import classes from "./projects-tool.module.css";
 import { applyMove, flatten, INDENT, moveRepoToGroup, patchGroup, project as projectDrop, type FlatItem, ungroup } from "./repoTree";
 import { t } from "../../i18n";
 
-const NODE_FRAMEWORKS: Framework[] = ["vite", "next", "react", "expo", "node"];
+const NODE_FRAMEWORKS: Framework[] = ["next", "nuxt", "svelte", "astro", "angular", "vue", "solid", "gatsby", "nest", "vite", "react", "expo", "node"];
 
 /** Left tool window: repos and one-level groups, reorderable by drag and drop. */
 export function ProjectsTool({ style, onMinimize }: { style?: React.CSSProperties; onMinimize?: () => void }) {
@@ -276,7 +277,7 @@ function GroupRow({ group, renaming, onRename, onRenameDone, onToggle, onUngroup
   );
 }
 
-/** Expandable repo card; children are its runnable commands, settings live in the "…" menu. */
+/** Expandable repo card; children are its files, commands and settings live in the "…" menu. */
 interface RepoNodeProps {
   repo: Repo;
   open: boolean;
@@ -288,7 +289,7 @@ interface RepoNodeProps {
 }
 
 function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove }: RepoNodeProps) {
-  const { project, gitStatuses, gitErrors, processes, openTerminalAt, settings } = useProjectContext();
+  const { project, gitStatuses, gitErrors, refreshGit, processes, openTerminalAt, settings } = useProjectContext();
   const run = useRunCommand();
   const procs = repo.commands.map((c) => processes[processKey(repo.id, c.id)]).filter((p) => !!p);
   const isNode = NODE_FRAMEWORKS.includes(repo.framework);
@@ -327,7 +328,22 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
           <Text size="sm" fw={500} truncate>
             {repo.name}
           </Text>
-          {gitErrors[repo.id] ? (
+          {gitErrors[repo.id] === NOT_A_REPO ? (
+            <Text size="xs" c="dimmed" truncate onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+              {t("No git repo")} ·{" "}
+              <Anchor
+                component="button"
+                size="xs"
+                onClick={() =>
+                  gitInit(repo.path)
+                    .then(() => refreshGit(repo.id))
+                    .catch((err) => notifyError(err, t("Could not initialize git")))
+                }
+              >
+                {t("Initialize")}
+              </Anchor>
+            </Text>
+          ) : gitErrors[repo.id] ? (
             <Text size="xs" c="red" truncate>
               {gitErrors[repo.id]}
             </Text>
@@ -399,16 +415,7 @@ function RepoNode({ repo, open, onToggle, onEdit, groups, currentGroupId, onMove
           </Menu>
         </div>
       </div>
-      {open &&
-        repo.commands.map((command) => (
-          <div key={command.id} className={classes.child} onPointerDown={(e) => e.stopPropagation()}>
-            <ProcessStatusDot processes={[processes[processKey(repo.id, command.id)]].filter((p) => !!p)} keepSpace />
-            <Text size="xs" truncate style={{ flex: 1 }} c="gray.4">
-              {command.label}
-            </Text>
-            <CommandToggle repo={repo} command={command} onRun={run} />
-          </div>
-        ))}
+      {open && <FileTree repo={repo} />}
     </div>
   );
 }

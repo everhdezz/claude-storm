@@ -9,7 +9,7 @@ import { t } from "../../i18n";
 
 /** Left tool window with the project's parallel Claude sessions. */
 export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; onMinimize?: () => void }) {
-  const { project, sessions, ui } = useProjectContext();
+  const { project, sessions, ui, showChat, mainView } = useProjectContext();
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const [showArchived, setShowArchived] = useState(ui.initial.showArchived ?? false);
@@ -20,6 +20,8 @@ export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; 
   /** Opens the empty "Chatea con la IA" home; the first prompt there creates the session. */
   function newSession() {
     navigate(`/project/${project.id}`);
+    // Already on the home (no route change) the wiki would stay in front, so switch explicitly.
+    showChat();
   }
 
   return (
@@ -56,7 +58,7 @@ export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; 
             {showArchived ? t("No archived sessions.") : t("No sessions yet. Write in “Chat with AI” or create a new one.")}
           </Text>
         ) : (
-          visible.map((s) => <SessionCard key={s.id} session={s} selected={s.id === sessionId} />)
+          visible.map((s) => <SessionCard key={s.id} session={s} selected={mainView === "chat" && s.id === sessionId} />)
         )}
       </ScrollArea>
       <div style={{ padding: "6px 12px 10px" }}>

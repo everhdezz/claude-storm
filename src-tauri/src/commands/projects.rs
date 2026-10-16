@@ -10,7 +10,7 @@ use crate::store::{find_project_mut, Store};
 pub const PROJECTS_CHANGED: &str = "projects-changed";
 
 /// Notifies all windows that project data changed.
-pub fn notify_projects_changed(app: &AppHandle) {
+pub fn notify_projects_changed<R: tauri::Runtime>(app: &AppHandle<R>) {
     let _ = app.emit(PROJECTS_CHANGED, ());
 }
 

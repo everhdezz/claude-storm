@@ -58,10 +58,10 @@ export function StickyPrompt({ viewport, items }: { viewport: RefObject<HTMLDivE
   return (
     <UnstyledButton className={classes.stickyPrompt} onClick={jump} title={t("Go to this message")}>
       <IconArrowUp size={13} className={classes.stickyIcon} />
-      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+      <Text size="xs" className={classes.stickyLabel}>
         {index === prompts.length - 1 ? t("Last message") : t("Message {n} of {total}", { n: index + 1, total: prompts.length })}
       </Text>
-      <Text size="xs" truncate style={{ flex: 1, minWidth: 0 }}>
+      <Text size="xs" c="inherit" truncate style={{ flex: 1, minWidth: 0 }}>
         {prompts[index].text || prompts[index].attachments?.join(", ")}
       </Text>
     </UnstyledButton>

@@ -18,11 +18,8 @@ export function ChatHome() {
   const [permissionMode, setPermissionMode] = useState("acceptEdits");
 
   async function start(prompt: string, model: string | null, attachments: string[]) {
-    if (project.repos.length === 0) {
-      notifyError(t("Add at least one repo to the project to chat with Claude about it."), t("No repos"));
-      return;
-    }
-    setPreparing(othersActive);
+    const noRepos = project.repos.length === 0;
+    setPreparing(othersActive && !noRepos);
     try {
       const title = (prompt.split("\n")[0] || attachments[0]?.split(/[\\/]/).pop() || t("Documents")).slice(0, 60);
       const session = await createSession(project.id, {
@@ -30,7 +27,7 @@ export function ChatHome() {
         repoIds: project.repos.map((r) => r.id),
         model,
         permissionMode,
-        mode: othersActive ? "isolated" : "direct",
+        mode: othersActive && !noRepos ? "isolated" : "direct",
       });
       await sendSessionPrompt(session.id, prompt, null, attachments);
       navigate(`/project/${project.id}/session/${session.id}`);
@@ -51,8 +48,10 @@ export function ChatHome() {
           {t("Chat with AI")}
         </Title>
         <Text size="sm" c="dimmed" ta="center" maw={460}>
-          {tn(project.repos.length, "Tell Claude what to do in {project}. A new Claude Code session opens on its repo.", "Tell Claude what to do in {project}. A new Claude Code session opens on its {count} repos.", { project: project.name })}
-          {othersActive ? ` ${t("It runs isolated because another session is already working.")}` : ""}
+          {project.repos.length === 0
+            ? t("Tell Claude what to do in {project}. It has no repos yet: Claude works in a scratch folder and can create repos and attach them to the project.", { project: project.name })
+            : tn(project.repos.length, "Tell Claude what to do in {project}. A new Claude Code session opens on its repo.", "Tell Claude what to do in {project}. A new Claude Code session opens on its {count} repos.", { project: project.name })}
+          {othersActive && project.repos.length > 0 ? ` ${t("It runs isolated because another session is already working.")}` : ""}
         </Text>
         {preparing && (
           <Group gap={6} mt="xs">

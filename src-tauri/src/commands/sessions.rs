@@ -74,10 +74,15 @@ fn session_repos(store: &Store, session: &Session, project: &Project) -> Vec<(St
         .iter()
         .filter_map(|id| project.repos.iter().find(|r| &r.id == id))
         .map(|r| {
-            let wd = working_dir(&store.dir(), session, &r.path, &r.name);
+            let wd = working_dir(&store.dir(), session, &r.id, &r.path, &r.name);
             (r.id.clone(), r.name.clone(), PathBuf::from(&r.path), wd)
         })
         .collect()
+}
+
+/// Keeps the repos that got a worktree (folders without git are worked on directly and have none).
+fn with_worktree(session: &Session, repos: Vec<(String, String, PathBuf, PathBuf)>) -> Vec<(String, String, PathBuf, PathBuf)> {
+    repos.into_iter().filter(|(id, ..)| session.base_branches.contains_key(id)).collect()
 }
 
 /// Lists the sessions of a project, newest activity first.
@@ -97,11 +102,18 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         return Err(AppError::msg("Session title cannot be empty"));
     }
     let repo_ids: Vec<String> = input.repo_ids.into_iter().filter(|id| project.repos.iter().any(|r| &r.id == id)).collect();
-    if repo_ids.is_empty() {
-        return Err(AppError::msg("Pick at least one repo"));
-    }
     let now = Utc::now();
     let id = new_id();
+    // Without repos the session chats from its own scratch folder; repos can be attached later (MCP).
+    let workspace = repo_ids.is_empty().then(|| {
+        let dir = crate::sessions::manager::workspace_dir(&store.dir(), &project_id, &id);
+        dir.to_string_lossy().to_string()
+    });
+    if let Some(dir) = &workspace {
+        std::fs::create_dir_all(dir)?;
+    }
+    // Nothing to isolate yet: worktrees only exist for repos picked at creation.
+    let mode = if workspace.is_some() { SessionMode::Direct } else { input.mode };
     let mut session = Session {
         id: id.clone(),
         project_id: project_id.clone(),
@@ -111,7 +123,7 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         model: input.model.filter(|m| !m.trim().is_empty()),
         permission_mode: input.permission_mode.unwrap_or_else(|| "acceptEdits".into()),
         repo_ids,
-        mode: input.mode,
+        mode,
         branch: None,
         status: SessionStatus::Idle,
         claude_session_id: uuid::Uuid::new_v4().to_string(),
@@ -127,11 +139,19 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         pending: Vec::new(),
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
+        workspace,
     };
 
     if session.mode == SessionMode::Isolated {
         let branch = format!("{}-{}", worktree::slugify(&title), &id[..6]);
-        let repos = session_repos(&store, &session, &project);
+        // Folders without git are used as they are; only repositories get a worktree.
+        let app_data = store.dir();
+        let repos: Vec<(String, String, PathBuf, PathBuf)> = project
+            .repos
+            .iter()
+            .filter(|r| session.repo_ids.contains(&r.id) && crate::git::is_repo(Path::new(&r.path)))
+            .map(|r| (r.id.clone(), r.name.clone(), PathBuf::from(&r.path), crate::sessions::manager::worktree_dir(&app_data, &session, &r.name)))
+            .collect();
         let branch_for_task = branch.clone();
         let (bases, notes) = tauri::async_runtime::spawn_blocking(move || -> AppResult<(Vec<(String, String)>, Vec<String>)> {
             let mut created: Vec<(PathBuf, PathBuf)> = Vec::new();
@@ -332,7 +352,7 @@ async fn cleanup_worktrees(store: &Store, session_id: &str, cleanup: WorktreeCle
         return Ok(());
     }
     let project = store.project(&session.project_id)?;
-    let repos = session_repos(store, &session, &project);
+    let repos = with_worktree(&session, session_repos(store, &session, &project));
     let branch = session.branch.clone().unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
         for (_, _, repo, wt) in repos {
@@ -443,6 +463,7 @@ pub async fn session_diff(store: State<'_, Store>, session_id: String) -> AppRes
     tauri::async_runtime::spawn_blocking(move || {
         repos
             .into_iter()
+            .filter(|(_, _, _, wd)| crate::git::is_repo(wd))
             .map(|(repo_id, repo_name, _, wd)| {
                 let base = if isolated { bases.get(&repo_id).cloned().unwrap_or_else(|| "HEAD".into()) } else { "HEAD".into() };
                 let diff = worktree::diff(&wd, &base)?;
@@ -513,7 +534,7 @@ fn isolated_parts(
         return Err(AppError::msg("Only isolated sessions have their own branch."));
     }
     let project = store.project(&session.project_id)?;
-    Ok((session_repos(store, &session, &project), session.branch.clone().unwrap_or_default(), session.base_branches.clone()))
+    Ok((with_worktree(&session, session_repos(store, &session, &project)), session.branch.clone().unwrap_or_default(), session.base_branches.clone()))
 }
 
 /// Porcelain status of a folder.

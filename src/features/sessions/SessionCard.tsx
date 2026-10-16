@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ActionIcon, Group, Loader, Menu, Radio, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { archiveSession, deleteSession, duplicateSession, isBusy, stopSession, updateSession } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import type { Session, WorktreeCleanup } from "../../types";
@@ -14,8 +14,9 @@ import { t, tn } from "../../i18n";
 
 /** Card of one session in the Chats tool window. */
 export function SessionCard({ session, selected }: { session: Session; selected: boolean }) {
-  const { project } = useProjectContext();
+  const { project, showChat } = useProjectContext();
   const navigate = useNavigate();
+  const { sessionId } = useParams();
   const [editing, setEditing] = useState(false);
 
   async function rename(title: string) {
@@ -33,7 +34,8 @@ export function SessionCard({ session, selected }: { session: Session; selected:
   }
 
   function leaveIfSelected() {
-    if (selected) navigate(`/project/${project.id}`);
+    // Compared with the URL, not `selected`: the chat may be open behind the wiki or the code editor.
+    if (sessionId === session.id) navigate(`/project/${project.id}`);
   }
 
   function archive() {
@@ -56,7 +58,11 @@ export function SessionCard({ session, selected }: { session: Session; selected:
     <div
       className={classes.card}
       data-selected={selected || undefined}
-      onClick={() => navigate(`/project/${project.id}/session/${session.id}`)}
+      onClick={() => {
+        navigate(`/project/${project.id}/session/${session.id}`);
+        // Clicking the chat already in the URL changes no route, so the main area is switched here too.
+        showChat();
+      }}
     >
       <Group justify="space-between" wrap="nowrap" gap={6} align="flex-start">
         {editing ? (

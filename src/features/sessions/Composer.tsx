@@ -145,6 +145,7 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
           disabled={blocked}
           placeholder={blocked ? t("Pick a Claude account for this project before chatting.") : placeholder}
           autoFocus={autoFocus}
+          data-composer
           {...register("prompt")}
           onPaste={onPaste}
           onKeyDown={(e) => {

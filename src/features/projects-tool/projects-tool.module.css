@@ -50,3 +50,32 @@
   max-height: 420px;
   overflow-y: auto;
 }
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding-right: 8px;
+  cursor: pointer;
+}
+
+.fileRow:hover {
+  background: var(--dh-hover);
+}
+
+.fileRow[data-selected] {
+  background: var(--dh-selected);
+}
+
+.fileRow[data-hidden] {
+  opacity: 0.6;
+}
+
+.fileChevron {
+  width: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+}

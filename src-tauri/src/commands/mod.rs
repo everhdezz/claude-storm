@@ -1,3 +1,4 @@
+pub mod files;
 pub mod git;
 pub mod processes;
 pub mod profiles;

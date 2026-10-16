@@ -14,6 +14,12 @@ pub async fn git_status(path: String) -> AppResult<GitStatus> {
     blocking(move || git::status(&PathBuf::from(path))).await
 }
 
+/// Runs `git init` in a folder that is not a repository yet.
+#[tauri::command]
+pub async fn git_init(path: String) -> AppResult<()> {
+    blocking(move || git::init(&PathBuf::from(path))).await
+}
+
 /// Lists local, remote and recent branches of a repository.
 #[tauri::command]
 pub async fn git_branches(path: String) -> AppResult<BranchList> {

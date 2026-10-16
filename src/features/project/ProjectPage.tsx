@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Center, Loader, Text } from "@mantine/core";
-import { IconBook2, IconFolder, IconMessageCircle, IconMessages, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
+import { IconBook2, IconCode, IconFolder, IconMessageChatbot, IconMessages, IconPlayerPlay, IconTerminal2 } from "@tabler/icons-react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { isActive } from "../../api/processes";
+import { refreshRepoFrameworks } from "../../api/repos";
 import { Island } from "../../components/ide/Island";
 import { Splitter } from "../../components/ide/Splitter";
 import { ToolStripe, type StripeItem } from "../../components/ide/ToolStripe";
 import ide from "../../components/ide/ide.module.css";
 import { ChatsTool } from "../chats/ChatsTool";
+import { CodeView, type CodeFile } from "../code/CodeView";
 import { useProcesses } from "../processes/useProcesses";
 import { useSessions } from "../sessions/useSessions";
 import { SettingsModal, type SettingsSection } from "../settings/SettingsModal";
@@ -66,8 +68,18 @@ function ProjectWorkspace({ project }: { project: Project }) {
   // The wiki mounts the first time it is shown and then stays mounted, keeping the open page.
   const [wikiOpened, setWikiOpened] = useState(layout.prefs.main === "wiki");
   if (layout.prefs.main === "wiki" && !wikiOpened) setWikiOpened(true);
+  // Same for the code editor, so open tabs and unsaved edits survive switching views.
+  const [codeOpened, setCodeOpened] = useState(layout.prefs.main === "code");
+  if (layout.prefs.main === "code" && !codeOpened) setCodeOpened(true);
+  const [fileRequest, setFileRequest] = useState<(CodeFile & { seq: number }) | null>(null);
+  const [activeFile, setActiveFile] = useState<CodeFile | null>(null);
   // Reopening the last session on startup must not switch away from a remembered wiki view.
   const restoringPath = useRef(false);
+
+  // Each time the project opens, the framework of every repo is detected again (ports and commands stay; a repo without commands gets the detected ones).
+  useEffect(() => {
+    refreshRepoFrameworks(project.id).catch((err) => console.warn("Could not refresh repo frameworks", err));
+  }, [project.id]);
 
   useEffect(() => {
     if (restored.current) return;
@@ -113,7 +125,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
   const sessionsWorking = sessions.some((s) => s.status === "working");
   const topItems: StripeItem<LeftTool>[] = [
     { id: "projects", label: t("Projects"), icon: IconFolder },
-    { id: "chats", label: "Chats", icon: IconMessageCircle, badge: sessionsWorking },
+    { id: "chats", label: "Chats", icon: IconMessages, badge: sessionsWorking },
   ];
   const bottomItems: StripeItem<BottomTool>[] = [
     { id: "terminal", label: "Terminal", icon: IconTerminal2 },
@@ -121,13 +133,25 @@ function ProjectWorkspace({ project }: { project: Project }) {
   ];
 
   const mainItems: StripeItem<MainView>[] = [
-    { id: "chat", label: "Chat", icon: IconMessages, badge: sessionsWorking && prefs.main !== "chat" },
+    { id: "chat", label: "Chat", icon: IconMessageChatbot, badge: sessionsWorking && prefs.main !== "chat" },
     { id: "wiki", label: "Wiki", icon: IconBook2 },
+    { id: "code", label: t("Code"), icon: IconCode },
   ];
 
   function revealService(processId: string) {
     setSelectedService(processId);
     layout.showBottom("services");
+  }
+
+  function showChat() {
+    layout.showMain("chat");
+    // Wait for the chat island to be visible again; a hidden textarea cannot take focus.
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("textarea[data-composer]")?.focus());
+  }
+
+  function openFile(repoId: string, path: string) {
+    setFileRequest((prev) => ({ repoId, path, seq: (prev?.seq ?? 0) + 1 }));
+    layout.showMain("code");
   }
 
   function openTerminalAt(cwd: string) {
@@ -152,6 +176,11 @@ function ProjectWorkspace({ project }: { project: Project }) {
         selectService: setSelectedService,
         revealService,
         openTerminalAt,
+        mainView: prefs.main,
+        showChat,
+        openFile,
+        activeFile,
+        setActiveFile,
         runTarget,
         setRunTarget: (id) => {
           setSavedRunTarget(id);
@@ -207,6 +236,7 @@ function ProjectWorkspace({ project }: { project: Project }) {
               <Outlet />
             </Island>
             {wikiOpened && <WikiView hidden={prefs.main !== "wiki"} />}
+            {codeOpened && <CodeView hidden={prefs.main !== "code"} request={fileRequest} />}
           </div>
           {prefs.bottom && (
             <Splitter

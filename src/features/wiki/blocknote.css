@@ -1,0 +1,4 @@
+/* BlockNote ships its own unlayered copy of Mantine's component styles; in the bundled app it loads
+   after the app's CSS modules and resets them (e.g. buttons back to a transparent background).
+   Keeping it in the same layer as Mantine lets the app's styles win, as they do in dev. */
+@import "@blocknote/mantine/style.css" layer(mantine);

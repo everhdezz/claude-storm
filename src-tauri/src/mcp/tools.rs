@@ -25,7 +25,9 @@ to confirm it compiles. You can only stop or restart services you started. \
 The project also has a wiki of Markdown pages the user keeps (wiki_* tools): check it for project docs, \
 conventions and notes, and update it when the user asks you to document something. \
 When a message contains a wiki://<id> reference (often as a Markdown link), it points to a wiki page: \
-read it with wiki_read, passing the reference as path.";
+read it with wiki_read, passing the reference as path. \
+A session may start without repos: then your working folder is a scratch workspace. When you create or \
+clone a repo (in the workspace or wherever the user asks), call repo_attach so it joins the project.";
 
 const DEFAULT_WAIT: u64 = 15;
 const MAX_WAIT: u64 = 90;
@@ -84,6 +86,18 @@ pub fn definitions() -> Value {
             "description": "Your session's mode, branch, base branch and the folder you work in for each repo.",
             "inputSchema": { "type": "object", "properties": {} },
             "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "repo_attach",
+            "description": "Adds a folder (typically a repo you just created or cloned) to the ClaudeStorm project, detecting its framework and dev commands, and attaches it to your session so services_list and service_start can run it. Relative paths are resolved from your working folder. Folders the project already has are just attached.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Folder of the repo, absolute or relative to your working folder" },
+                    "name": { "type": "string", "description": "Optional display name (defaults to the folder name)" }
+                },
+                "required": ["path"]
+            }
         },
         {
             "name": "services_list",
@@ -214,6 +228,7 @@ pub async fn call<R: Runtime>(app: &AppHandle<R>, session_id: &str, name: &str, 
     let project = store.project(&session.project_id)?;
     match name {
         "worktree_info" => Ok(worktree_info(&store, &session, &project)),
+        "repo_attach" => repo_attach(app, &store, &session, &project, args),
         "services_list" => Ok(services_list(app, &store, &session, &project)),
         "service_start" => start(app, &session, &project, args, false).await,
         "service_restart" => start(app, &session, &project, args, true).await,
@@ -312,7 +327,7 @@ fn worktree_info(store: &Store, session: &Session, project: &Project) -> String 
         .map(|r| {
             json!({
                 "repo": r.name,
-                "workingFolder": working_dir(&store.dir(), session, &r.path, &r.name),
+                "workingFolder": working_dir(&store.dir(), session, &r.id, &r.path, &r.name),
                 "mainCheckout": r.path,
                 "baseBranch": session.base_branches.get(&r.id),
             })
@@ -322,8 +337,51 @@ fn worktree_info(store: &Store, session: &Session, project: &Project) -> String 
         "session": session.title,
         "mode": if session.mode == SessionMode::Isolated { "isolated (own git worktree)" } else { "direct (edits the main checkout)" },
         "branch": session.branch,
+        "workspace": session.workspace,
         "repos": repos,
     }))
+}
+
+/// Adds a folder to the project (if new) and to the session's repos.
+fn repo_attach<R: Runtime>(app: &AppHandle<R>, store: &Store, session: &Session, project: &Project, args: &Value) -> AppResult<String> {
+    let raw = args.get("path").and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty()).ok_or_else(|| AppError::msg("path is required"))?;
+    let mut path = std::path::PathBuf::from(raw);
+    if path.is_relative() {
+        let base = session.workspace.clone().map(std::path::PathBuf::from).or_else(|| {
+            project.repos.iter().find(|r| session.repo_ids.first() == Some(&r.id)).map(|r| working_dir(&store.dir(), session, &r.id, &r.path, &r.name))
+        });
+        let base = base.ok_or_else(|| AppError::msg("Use an absolute path: this session has no working folder yet."))?;
+        path = base.join(path);
+    }
+    let path = path.to_string_lossy().to_string();
+    let (mut repo, fresh) = crate::commands::repos::attach_paths(store, &project.id, &[path])?.remove(0);
+    if let Some(name) = args.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty() && *n != repo.name) {
+        let name = name.to_string();
+        let id = repo.id.clone();
+        store.write(|d| {
+            if let Some(r) = crate::store::find_project_mut(d, &project.id)?.repos.iter_mut().find(|r| r.id == id) {
+                r.name = name.clone();
+            }
+            Ok(())
+        })?;
+        repo.name = name;
+    }
+    let updated = store.update_session(&session.id, |s| {
+        if !s.repo_ids.contains(&repo.id) {
+            s.repo_ids.push(repo.id.clone());
+        }
+    })?;
+    crate::commands::projects::notify_projects_changed(app);
+    emit_session(app, &updated);
+    let commands: Vec<&str> = repo.commands.iter().map(|c| c.label.as_str()).collect();
+    Ok(pretty(&json!({
+        "repo": repo.name,
+        "path": repo.path,
+        "addedToProject": fresh,
+        "framework": repo.framework,
+        "commands": commands,
+        "note": "Attached to your session. It is added to your allowed folders from your next turn.",
+    })))
 }
 
 fn services_list<R: Runtime>(app: &AppHandle<R>, store: &Store, session: &Session, project: &Project) -> String {

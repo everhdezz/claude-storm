@@ -2,7 +2,38 @@ import type { LanguagePref } from "./i18n";
 
 /** Shared domain types mirroring the Rust models (camelCase over the wire). */
 
-export type Framework = "next" | "vite" | "react" | "expo" | "laravel" | "node" | "generic";
+export type Framework =
+  | "next"
+  | "nuxt"
+  | "svelte"
+  | "astro"
+  | "angular"
+  | "vue"
+  | "solid"
+  | "gatsby"
+  | "nest"
+  | "vite"
+  | "react"
+  | "expo"
+  | "node"
+  | "deno"
+  | "laravel"
+  | "symfony"
+  | "php"
+  | "django"
+  | "flask"
+  | "fastapi"
+  | "python"
+  | "rails"
+  | "phoenix"
+  | "go"
+  | "rust"
+  | "flutter"
+  | "dotnet"
+  | "spring"
+  | "java"
+  | "godot"
+  | "generic";
 
 export interface RepoCommand {
   id: string;

@@ -161,6 +161,10 @@ pub struct Session {
     /// What the user allowed "always" in this session (a tool name, or `Bash:<command>`).
     #[serde(default)]
     pub allowed_tools: Vec<String>,
+    /// Scratch folder Claude works in when the session started without repos; it stays the working
+    /// directory (so `--resume` finds the conversation) and repos attached later are added beside it.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 /// Something Claude Code needs the user to decide: a tool permission or an AskUserQuestion.
@@ -270,11 +274,35 @@ pub struct Repo {
 #[serde(rename_all = "lowercase")]
 pub enum Framework {
     Next,
+    Nuxt,
+    Svelte,
+    Astro,
+    Angular,
+    Vue,
+    Solid,
+    Gatsby,
+    Nest,
     Vite,
     React,
     Expo,
-    Laravel,
     Node,
+    Deno,
+    Laravel,
+    Symfony,
+    Php,
+    Django,
+    Flask,
+    Fastapi,
+    Python,
+    Rails,
+    Phoenix,
+    Go,
+    Rust,
+    Flutter,
+    Dotnet,
+    Spring,
+    Java,
+    Godot,
     Generic,
 }
 

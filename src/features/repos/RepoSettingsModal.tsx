@@ -17,9 +17,9 @@ import { modals } from "@mantine/modals";
 import { IconAdjustments, IconPlus, IconTerminal, IconTrash, IconWand } from "@tabler/icons-react";
 import { Controller, useFieldArray, useForm, type Control, type UseFormRegister } from "react-hook-form";
 import { redetectRepo, updateRepo } from "../../api/repos";
-import { FrameworkIcon } from "../../components/FrameworkIcon";
+import { FrameworkIcon, frameworkMeta } from "../../components/FrameworkIcon";
 import { notifyError, notifySuccess } from "../../hooks/notify";
-import type { Framework, Repo, RepoCommand } from "../../types";
+import type { Repo, RepoCommand } from "../../types";
 import classes from "../settings/settings.module.css";
 import { t } from "../../i18n";
 
@@ -30,16 +30,6 @@ const SECTIONS: { id: RepoSection; label: string; icon: typeof IconAdjustments }
   { id: "general", label: t("General"), icon: IconAdjustments },
   { id: "commands", label: t("Commands"), icon: IconTerminal },
 ];
-
-const FRAMEWORK_LABELS: Record<Framework, string> = {
-  next: "Next.js",
-  vite: "Vite",
-  react: "React",
-  expo: "Expo",
-  laravel: "Laravel",
-  node: "Node",
-  generic: t("Generic"),
-};
 
 interface FormValues {
   name: string;
@@ -191,7 +181,7 @@ function GeneralSection({ projectId, repo, control, register, error }: SectionPr
         <FrameworkIcon framework={repo.framework} size={28} />
         <div style={{ flex: 1 }}>
           <Text size="sm" fw={500}>
-            {FRAMEWORK_LABELS[repo.framework]}
+            {frameworkMeta(repo.framework).label}
           </Text>
           <Text size="xs" c="dimmed">
             {repo.packageManager ? t("Package manager: {manager}", { manager: repo.packageManager }) : t("No package manager detected")}

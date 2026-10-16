@@ -6,7 +6,7 @@
 
 Chat with Claude, let it work in isolated git worktrees, run your dev servers, review diffs, approve what it wants to do, and merge, all from one window that feels like a JetBrains IDE.
 
-![version](https://img.shields.io/badge/version-0.6.1-blue)
+![version](https://img.shields.io/badge/version-0.6.3-blue)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![platform](https://img.shields.io/badge/macOS-tested-black?logo=apple)
 ![built with](https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20React-24C8DB?logo=tauri)
@@ -38,6 +38,7 @@ It runs **locally**, uses **your own Claude Code login** (subscription or API ke
 ### Sessions and chat
 - **Parallel Claude Code sessions** per project, with a configurable concurrency limit and a queue.
 - **Direct or isolated mode.** Direct sessions edit your repos in place; isolated sessions get one git worktree and branch per repo.
+- **Start from zero.** Chat in a project with no repos yet: Claude works in a scratch folder, creates or clones the repos you ask for and attaches them to the project itself.
 - **Queued messages, like Claude Code.** Keep typing while Claude works: messages queue up and go out together when the turn ends. **Send now** interrupts the turn and sends them immediately, without losing the conversation.
 - **Approvals and questions.** Tool permissions arrive as cards with **Allow**, **Always allow in this session** and **Deny** (with an optional note for Claude). `AskUserQuestion` prompts appear as radio buttons or checkboxes, plus an "other answer" field.
 - **See what Claude used.** Skills, MCP tools, subagents and web tools are tagged in the chat and summarized in the session header.
@@ -63,6 +64,12 @@ It runs **locally**, uses **your own Claude Code login** (subscription or API ke
 Every session gets a built-in, local **ClaudeStorm MCP server** with tools to list the project's services, start/restart/stop the ones it owns, read their logs and inspect its worktree. So Claude can restart the dev server after a change and confirm it compiles, instead of guessing. Services Claude starts are labeled in the UI, and it can never stop the ones you started.
 
 The same server exposes the **project wiki** (`wiki_tree`, `wiki_read`, `wiki_search`, `wiki_create`, `wiki_write`, `wiki_rename`, `wiki_move`, `wiki_delete`), so Claude can look up your docs and write new ones; the wiki view refreshes live when it does. Every page has a stable internal id: use **Copy reference** in a page's menu and paste the `[Page](wiki://<id>)` link in any chat to hand that page to Claude as context.
+
+With `repo_attach`, Claude adds a repo it just created or cloned to the project (framework and dev commands detected) and to its session, so it can start its services right away. That is how a chat in a project with **no repos yet** grows into a real project: such a session works in its own scratch folder (`<app data>/workspaces/<project>/<session>`) and keeps it as its working directory, with attached repos added next to it.
+
+### Files and wiki
+- **Files in the Projects tree**: expand a repo to browse its files, and open them in the **Code** view (CodeMirror tabs with syntax highlighting, ⌘S to save).
+- **Project wiki**: Markdown pages per project in a Notion-like editor, with a page tree and search, that Claude can read and write too.
 
 ### Everything else
 - **Multiple Claude accounts**: isolated subscription profiles (Claude Code does the login in your browser), API keys stored in the OS keychain, or the login already on your machine.
@@ -108,7 +115,7 @@ npm run tauri build
 
 ### First steps
 
-1. **Create a project** and add the repos you work with (several repos per project is the sweet spot).
+1. **Create a project** and add the repos you work with (several repos per project is the sweet spot), or leave it empty and let Claude create them.
 2. **Pick a Claude account** in the status bar or in Settings → Claude accounts.
 3. **Write in “Chat with AI”.** A new session starts; if another one is already working, it runs isolated in its own worktree.
 4. Answer approval cards when they show up, queue follow-ups while Claude works, and run your servers from the Services panel or the "start the server" banner.

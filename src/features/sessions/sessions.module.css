@@ -287,20 +287,27 @@
   top: 6px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 5;
+  z-index: 20;
   width: min(812px, calc(100% - 32px));
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 7px 12px;
   border-radius: 8px;
-  background: color-mix(in srgb, #2e436e 88%, var(--dh-island-bg));
-  border: 1px solid color-mix(in srgb, var(--mantine-color-indigo-4) 35%, transparent);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  /* Solid colors: the thread scrolls underneath, so any see-through background makes it unreadable. */
+  background: #2b3d63;
+  border: 1px solid #4b6299;
+  color: #eef2fa;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
 
 .stickyPrompt:hover {
-  background: #354d7e;
+  background: #344a78;
+}
+
+.stickyLabel {
+  flex-shrink: 0;
+  color: #aebde0;
 }
 
 .stickyIcon {

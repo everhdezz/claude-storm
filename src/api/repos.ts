@@ -27,9 +27,22 @@ export function redetectRepo(projectId: string, repoId: string): Promise<void> {
   return call("redetect_repo", { projectId, repoId });
 }
 
+/** Re-detects the framework and package manager of every repo, keeping ports and commands. */
+export function refreshRepoFrameworks(projectId: string): Promise<void> {
+  return call("refresh_repo_frameworks", { projectId });
+}
+
 /** Reads the working tree status of a repo. */
 export function gitStatus(path: string): Promise<GitStatus> {
   return call("git_status", { path });
+}
+
+/** Error of `gitStatus` for a folder that is not a git repository. */
+export const NOT_A_REPO = "not-a-git-repo";
+
+/** Runs `git init` in a folder that is not a repository yet. */
+export function gitInit(path: string): Promise<void> {
+  return call("git_init", { path });
 }
 
 /** Saves the order and grouping of a project's repos. */

@@ -4,7 +4,7 @@ import { es as blockNoteEs, en as blockNoteEn } from "@blocknote/core/locales";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/core/fonts/inter.css";
-import "@blocknote/mantine/style.css";
+import "./blocknote.css";
 import { wikiRead, wikiWrite } from "../../api/wiki";
 import { notifyError } from "../../hooks/notify";
 import { getLocale, t } from "../../i18n";

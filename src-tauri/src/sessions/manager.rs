@@ -262,10 +262,19 @@ impl SessionManager {
             .repo_ids
             .iter()
             .filter_map(|id| project.repos.iter().find(|r| &r.id == id))
-            .map(|r| crate::sessions::manager::working_dir(&store.dir(), &session, &r.path, &r.name))
+            .map(|r| crate::sessions::manager::working_dir(&store.dir(), &session, &r.id, &r.path, &r.name))
             .collect();
-        let Some(cwd) = dirs.first().cloned() else {
-            return Err(AppError::msg("The session has no repos; add at least one."));
+        // A session started without repos keeps its workspace as cwd; attached repos are extra dirs.
+        let (cwd, extra_dirs) = match &session.workspace {
+            Some(ws) => {
+                let ws = PathBuf::from(ws);
+                std::fs::create_dir_all(&ws)?;
+                (ws, &dirs[..])
+            }
+            None => match dirs.split_first() {
+                Some((first, rest)) => (first.clone(), rest),
+                None => return Err(AppError::msg("The session has no repos; add at least one.")),
+            },
         };
         let claude = crate::shell_env::which("claude").ok_or_else(|| AppError::msg("The `claude` CLI was not found in PATH."))?;
         let account = project_account(&store, &session.project_id)?;
@@ -290,7 +299,7 @@ impl SessionManager {
         if let Some(m) = model.clone().or(session.model.clone()).or(default_model).filter(|m| !m.trim().is_empty()) {
             cmd.args(["--model", m.trim()]);
         }
-        for dir in dirs.iter().skip(1) {
+        for dir in extra_dirs {
             cmd.arg("--add-dir").arg(dir);
         }
         // Gives Claude the ClaudeStorm MCP tools (services, logs, worktree info), pre-approved.
@@ -542,11 +551,22 @@ fn project_account(store: &Store, project_id: &str) -> AppResult<crate::models::
 }
 
 /// Folder Claude works in for a repo: the repo itself, or the session's worktree when isolated.
-pub fn working_dir(app_data: &std::path::Path, session: &Session, repo_path: &str, repo_name: &str) -> PathBuf {
+pub fn working_dir(app_data: &std::path::Path, session: &Session, repo_id: &str, repo_path: &str, repo_name: &str) -> PathBuf {
     match session.mode {
-        crate::models::SessionMode::Direct => PathBuf::from(repo_path),
-        crate::models::SessionMode::Isolated => app_data.join("worktrees").join(&session.project_id).join(&session.id).join(repo_name),
+        // Folders without git get no worktree (and no base branch): the session works on them directly.
+        crate::models::SessionMode::Isolated if session.base_branches.contains_key(repo_id) => worktree_dir(app_data, session, repo_name),
+        _ => PathBuf::from(repo_path),
     }
+}
+
+/// Scratch folder of a session created without repos.
+pub fn workspace_dir(app_data: &std::path::Path, project_id: &str, session_id: &str) -> PathBuf {
+    app_data.join("workspaces").join(project_id).join(session_id)
+}
+
+/// Where an isolated session keeps the worktree of a repo.
+pub fn worktree_dir(app_data: &std::path::Path, session: &Session, repo_name: &str) -> PathBuf {
+    app_data.join("worktrees").join(&session.project_id).join(&session.id).join(repo_name)
 }
 
 #[cfg(test)]
@@ -668,6 +688,7 @@ mod e2e {
                     pending: Vec::new(),
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
+        workspace: None,
                 });
                 Ok(())
             })

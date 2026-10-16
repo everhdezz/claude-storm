@@ -3,6 +3,8 @@ import type { AppSettings, ClaudeAccount, ProcessInfo, Project, Session } from "
 import type { SettingsSection } from "../settings/SettingsModal";
 import type { ProjectUiState } from "./useUiState";
 import type { GitStatusMap } from "./useGitStatuses";
+import type { CodeFile } from "../code/CodeView";
+import type { MainView } from "./useLayoutPrefs";
 
 export interface ProjectContextValue {
   project: Project;
@@ -19,6 +21,15 @@ export interface ProjectContextValue {
   selectService: (processId: string) => void;
   revealService: (processId: string) => void;
   openTerminalAt: (cwd: string) => void;
+  /** What the main area shows; only that view's item is highlighted in the left tools. */
+  mainView: MainView;
+  /** Brings the chat back over the wiki and puts the cursor in its composer. */
+  showChat: () => void;
+  /** Opens a repo file in the code editor and switches the main area to it. */
+  openFile: (repoId: string, path: string) => void;
+  /** File shown in the code editor, highlighted in the Projects tree. */
+  activeFile: CodeFile | null;
+  setActiveFile: (file: CodeFile | null) => void;
   /** Isolated session whose worktree the services run in; null runs them in the main checkout. */
   runTarget: string | null;
   setRunTarget: (sessionId: string | null) => void;

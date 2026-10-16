@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export type LeftTool = "projects" | "chats";
 export type BottomTool = "terminal" | "services";
 /** What the main area shows; picked on the right stripe, one at a time. */
-export type MainView = "chat" | "wiki";
+export type MainView = "chat" | "wiki" | "code";
 
 export interface LayoutPrefs {
   leftTools: LeftTool[];

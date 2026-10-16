@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActionIcon, Group, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconChevronDown, IconFolders, IconSettings } from "@tabler/icons-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { focusWelcomeWindow, listProjects, openProjectWindow } from "../../api/projects";
 import { notifyError } from "../../hooks/notify";
 import type { ProjectSummary } from "../../types";
@@ -43,7 +42,6 @@ export function ProjectTitleBar({ projectId, projectName, color, onSettings }: P
         background: color ? `linear-gradient(90deg, ${color}66 0%, ${color}26 38%, transparent 70%)` : undefined,
       }}
       data-tauri-drag-region
-      onDoubleClick={(e) => e.target === e.currentTarget && getCurrentWindow().toggleMaximize()}
     >
       <Menu opened={menuOpen} onChange={setMenuOpen} position="bottom-start" width={300} withinPortal>
         <Menu.Target>

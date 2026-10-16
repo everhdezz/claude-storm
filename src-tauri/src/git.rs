@@ -36,8 +36,28 @@ pub fn run_git(dir: &Path, args: &[&str]) -> AppResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Reads branch and change counts using porcelain v2 output.
+/// Error message of `git_status` for a folder that is not a git repository (the UI offers `git init`).
+pub const NOT_A_REPO: &str = "not-a-git-repo";
+
+/// Whether the folder is inside a git repository.
+pub fn is_repo(dir: &Path) -> bool {
+    run_git(dir, &["rev-parse", "--git-dir"]).is_ok()
+}
+
+/// Turns a plain folder into a git repository on `main`.
+pub fn init(dir: &Path) -> AppResult<()> {
+    if is_repo(dir) {
+        return Err(AppError::msg("The folder is already a git repository"));
+    }
+    run_git(dir, &["init", "-q", "-b", "main"])?;
+    Ok(())
+}
+
+/// Reads branch and change counts using porcelain v2 output; fails with [`NOT_A_REPO`] outside a repository.
 pub fn status(dir: &Path) -> AppResult<GitStatus> {
+    if dir.is_dir() && !is_repo(dir) {
+        return Err(AppError::msg(NOT_A_REPO));
+    }
     let out = run_git(dir, &["status", "--porcelain=v2", "--branch", "--untracked-files=all"])?;
     let mut s = parse_status(&out);
     let (ins, del) = parse_shortstat(&run_git(dir, &["diff", "HEAD", "--shortstat"]).unwrap_or_default());
@@ -237,6 +257,19 @@ pub fn create_branch(dir: &Path, name: &str, start: Option<&str>, checkout: bool
 #[cfg(test)]
 mod branch_tests {
     use super::*;
+
+    #[test]
+    fn plain_folder_reports_not_a_repo_until_initialized() {
+        let dir = std::env::temp_dir().join(format!("cs-nogit-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!is_repo(&dir));
+        assert_eq!(status(&dir).unwrap_err().to_string(), NOT_A_REPO);
+        init(&dir).unwrap();
+        assert!(is_repo(&dir));
+        assert_eq!(status(&dir).unwrap().branch.as_deref(), Some("main"));
+        assert!(init(&dir).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn parses_refs() {
