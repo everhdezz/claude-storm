@@ -19,6 +19,7 @@ use crate::usage::service::UsageService;
 
 pub const SESSION_ITEM: &str = "session-item";
 pub const SESSION_DELTA: &str = "session-delta";
+pub const SESSION_TOKENS: &str = "session-tokens";
 pub const SESSION_CHANGED: &str = "session-changed";
 
 /// A prompt waiting for a free slot.
@@ -42,6 +43,14 @@ struct ItemEvent<'a> {
 struct DeltaEvent<'a> {
     session_id: &'a str,
     text: &'a str,
+}
+
+/// Output tokens of one finished assistant message.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TokensEvent<'a> {
+    session_id: &'a str,
+    output_tokens: u64,
 }
 
 /// Runs Claude Code headless processes for sessions, one process per prompt, with a global limit.
@@ -481,6 +490,9 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
     if let Some(text) = &parsed.delta {
         let _ = app.emit_to(project_window_label(&session.project_id).as_str(), SESSION_DELTA, DeltaEvent { session_id: id, text });
     }
+    if let Some(output_tokens) = parsed.output_tokens {
+        let _ = app.emit_to(project_window_label(&session.project_id).as_str(), SESSION_TOKENS, TokensEvent { session_id: id, output_tokens });
+    }
     if !parsed.rate_windows.is_empty() {
         if let Some(account_id) = app.state::<Store>().project(&session.project_id).ok().and_then(|p| p.account_id) {
             app.state::<UsageService>().apply_rate_windows(app, &account_id, &parsed.rate_windows);
@@ -494,7 +506,18 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
         }
         match item {
             ChatItem::Text { text } => turn.last_text = Some(text.clone()),
-            ChatItem::Result { ok, .. } => turn.result_ok = Some(*ok),
+            ChatItem::Result { ok, input_tokens, output_tokens, .. } => {
+                turn.result_ok = Some(*ok);
+                let (input, output) = (input_tokens.unwrap_or(0), output_tokens.unwrap_or(0));
+                if input + output > 0 {
+                    if let Ok(updated) = app.state::<Store>().update_session(id, |s| {
+                        s.input_tokens += input;
+                        s.output_tokens += output;
+                    }) {
+                        emit_session(app, &updated);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -689,6 +712,8 @@ mod e2e {
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
         workspace: None,
+        input_tokens: 0,
+        output_tokens: 0,
                 });
                 Ok(())
             })

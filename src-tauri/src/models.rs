@@ -165,6 +165,11 @@ pub struct Session {
     /// directory (so `--resume` finds the conversation) and repos attached later are added beside it.
     #[serde(default)]
     pub workspace: Option<String>,
+    /// Tokens used by every turn so far: prompt tokens (cache included) and output tokens.
+    #[serde(default)]
+    pub input_tokens: u64,
+    #[serde(default)]
+    pub output_tokens: u64,
 }
 
 /// Something Claude Code needs the user to decide: a tool permission or an AskUserQuestion.

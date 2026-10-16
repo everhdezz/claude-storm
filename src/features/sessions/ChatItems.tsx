@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Badge, Group, Paper, Text, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile, IconStack2 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { modelLabel } from "../../api/sessions";
@@ -9,11 +9,44 @@ import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
 import { DiffBlock } from "./DiffBlock";
 import { KIND_META, toolInfo } from "./toolKinds";
+import { ResultStats } from "./TurnStats";
 import classes from "./sessions.module.css";
-import { t } from "../../i18n";
+import { t, tn } from "../../i18n";
 
 type ToolUse = Extract<ChatItem, { kind: "toolUse" }>;
 type ToolResult = Extract<ChatItem, { kind: "toolResult" }>;
+
+/** Runs of this many back-to-back tool calls collapse into one group. */
+const GROUP_MIN = 3;
+
+type Segment = { item: ChatItem; index: number } | { group: { use: ToolUse; index: number }[] };
+
+/** Whether a tool call renders its diff inline, so it stays out of groups. */
+function isEditTool(use: ToolUse): boolean {
+  return use.name === "Edit" || use.name === "MultiEdit" || use.name === "Write";
+}
+
+/** Splits the thread into single items and runs of consecutive non-edit tool calls. */
+function segment(items: ChatItem[]): Segment[] {
+  const out: Segment[] = [];
+  let run: { use: ToolUse; index: number }[] = [];
+  const flush = () => {
+    if (run.length >= GROUP_MIN) out.push({ group: run });
+    else for (const r of run) out.push({ item: r.use, index: r.index });
+    run = [];
+  };
+  items.forEach((item, index) => {
+    if (item.kind === "toolResult") return;
+    if (item.kind === "toolUse" && !isEditTool(item)) {
+      run.push({ use: item, index });
+      return;
+    }
+    flush();
+    out.push({ item, index });
+  });
+  flush();
+  return out;
+}
 
 /** Renders a conversation, pairing each tool call with its result. */
 export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: string }) {
@@ -22,7 +55,9 @@ export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: 
 
   return (
     <div className={classes.thread}>
-      {items.map((item, index) => {
+      {segment(items).map((seg) => {
+        if ("group" in seg) return <ToolGroup key={seg.group[0]!.index} calls={seg.group} results={results} />;
+        const { item, index } = seg;
         switch (item.kind) {
           case "prompt":
             return <PromptBubble key={index} item={item} />;
@@ -31,10 +66,15 @@ export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: 
           case "toolUse":
             return <ToolBlock key={index} use={item} result={results.get(item.id)} />;
           case "result":
-            return item.ok ? null : (
-              <Text key={index} size="xs" c="red.4" className={classes.resultLine}>
-                {item.text ? t("Claude ended with an error: {text}", { text: item.text }) : t("Claude ended with an error")}
-              </Text>
+            return (
+              <div key={index}>
+                {!item.ok && (
+                  <Text size="xs" c="red.4" className={classes.resultLine}>
+                    {item.text ? t("Claude ended with an error: {text}", { text: item.text }) : t("Claude ended with an error")}
+                  </Text>
+                )}
+                <ResultStats item={item} />
+              </div>
             );
           case "notice":
             return (
@@ -93,7 +133,7 @@ function Markdown({ text }: { text: string }) {
 
 /** Collapsible block for one tool call and its output; edits show a diff. */
 function ToolBlock({ use, result }: { use: ToolUse; result: ToolResult | undefined }) {
-  const isEdit = use.name === "Edit" || use.name === "MultiEdit" || use.name === "Write";
+  const isEdit = isEditTool(use);
   const [open, setOpen] = useState(isEdit);
   const info = toolInfo(use);
   const meta = info.kind === "builtin" ? null : KIND_META[info.kind];
@@ -126,6 +166,50 @@ function ToolBlock({ use, result }: { use: ToolUse; result: ToolResult | undefin
           {isEdit ? <EditPreview use={use} /> : <pre className={`${classes.code} selectable`}>{JSON.stringify(use.input, null, 2)}</pre>}
           {result && !isEdit && <pre className={`${classes.code} ${classes.output} selectable`}>{result.content || t("(no output)")}</pre>}
           {result?.isError && isEdit && <pre className={`${classes.code} ${classes.output}`}>{result.content}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Collapsed run of back-to-back tool calls, e.g. a burst of Bash commands. */
+function ToolGroup({ calls, results }: { calls: { use: ToolUse; index: number }[]; results: Map<string, ToolResult> }) {
+  const [open, setOpen] = useState(false);
+  const counts = new Map<string, number>();
+  for (const { use } of calls) {
+    const label = toolInfo(use).label;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const breakdown = [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(" · ");
+  const running = calls.filter(({ use }) => !results.has(use.id)).length;
+  const errors = calls.filter(({ use }) => results.get(use.id)?.isError).length;
+  return (
+    <div className={classes.tool}>
+      <UnstyledButton className={classes.toolHeader} onClick={() => setOpen((v) => !v)}>
+        {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+        <IconStack2 size={14} />
+        <Text size="xs" fw={600} style={{ flexShrink: 0 }}>
+          {tn(calls.length, "{count} tool call", "{count} tool calls")}
+        </Text>
+        <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
+          {breakdown}
+        </Text>
+        {running > 0 && (
+          <Badge size="xs" variant="light">
+            {running > 1 ? `${t("running")} · ${running}` : t("running")}
+          </Badge>
+        )}
+        {errors > 0 && (
+          <Badge size="xs" color="red" variant="light">
+            {errors > 1 ? `${t("error")} · ${errors}` : t("error")}
+          </Badge>
+        )}
+      </UnstyledButton>
+      {open && (
+        <div className={`${classes.toolBody} ${classes.toolGroupBody}`}>
+          {calls.map(({ use, index }) => (
+            <ToolBlock key={index} use={use} result={results.get(use.id)} />
+          ))}
         </div>
       )}
     </div>

@@ -116,6 +116,8 @@ function fixtureSession(id: string, patch: Partial<Session>): Session {
     pending: [],
     approvals: [],
     allowedTools: [],
+    inputTokens: 0,
+    outputTokens: 0,
     ...patch,
   };
 }
@@ -182,7 +184,7 @@ const history: ChatItem[] = [
   { kind: "toolUse", id: "t3", name: "Bash", input: { command: "pnpm vitest run checkout" } },
   { kind: "toolResult", toolUseId: "t3", content: " ✓ checkout.test.ts (4 tests) 212ms\n Test Files  1 passed (1)", isError: false },
   { kind: "text", text: "Done. I changed the rule to `z.string().email()` and added a test:\n\n- rejects `jane@`\n- accepts `jane@mail.com`" },
-  { kind: "result", ok: true, text: "", costUsd: 0.0412, durationMs: 48200, turns: 6 },
+  { kind: "result", ok: true, text: "", costUsd: 0.0412, durationMs: 48200, turns: 6, inputTokens: 184300, outputTokens: 2140 },
 ];
 
 /** Converts a fixture project into the welcome list shape. */

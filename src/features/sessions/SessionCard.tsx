@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActionIcon, Group, Loader, Menu, Radio, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Group, Loader, Menu, Radio, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
 import { useNavigate, useParams } from "react-router";
@@ -9,6 +9,7 @@ import type { Session, WorktreeCleanup } from "../../types";
 import { relativeTime } from "../../utils/time";
 import { useProjectContext } from "../project/ProjectContext";
 import { statusColor, statusText } from "./SessionStatusBadge";
+import { formatTokens } from "./TurnStats";
 import classes from "./sessions.module.css";
 import { t, tn } from "../../i18n";
 
@@ -133,6 +134,19 @@ export function SessionCard({ session, selected }: { session: Session; selected:
             </Text>
           )}
         </Group>
+        {session.inputTokens + session.outputTokens > 0 && (
+          <Tooltip
+            label={t("{input} input tokens (cache included) · {output} output tokens", {
+              input: session.inputTokens.toLocaleString(),
+              output: session.outputTokens.toLocaleString(),
+            })}
+            withinPortal
+          >
+            <Text size="xs" c="dimmed" className={classes.turnStats} style={{ whiteSpace: "nowrap" }}>
+              ↑ {formatTokens(session.inputTokens)} ↓ {formatTokens(session.outputTokens)}
+            </Text>
+          </Tooltip>
+        )}
       </Group>
     </div>
   );

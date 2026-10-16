@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
-import { SESSION_DELTA, SESSION_ITEM, sessionHistory } from "../../api/sessions";
+import { SESSION_DELTA, SESSION_ITEM, SESSION_TOKENS, sessionHistory } from "../../api/sessions";
 import { useTauriEvent } from "../../hooks/useTauriEvent";
 import type { ChatItem } from "../../types";
 
-/** Conversation of one session: stored history plus live items and streaming text. */
+/** Conversation of one session: stored history plus live items, streaming text and the running turn's output tokens. */
 export function useSessionChat(sessionId: string) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [streaming, setStreaming] = useState("");
   const [loading, setLoading] = useState(true);
+  const [turnTokens, setTurnTokens] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setItems([]);
     setStreaming("");
+    setTurnTokens(0);
     setLoading(true);
     sessionHistory(sessionId)
       .then((history) => !cancelled && setItems(history))
@@ -25,6 +27,7 @@ export function useSessionChat(sessionId: string) {
   useTauriEvent<{ sessionId: string; item: ChatItem }>(SESSION_ITEM, (e) => {
     if (e.sessionId !== sessionId) return;
     setItems((prev) => [...prev, e.item]);
+    if (e.item.kind === "prompt") setTurnTokens(0);
     if (e.item.kind === "text" || e.item.kind === "result" || e.item.kind === "toolUse") setStreaming("");
   });
 
@@ -32,5 +35,9 @@ export function useSessionChat(sessionId: string) {
     if (e.sessionId === sessionId) setStreaming((prev) => prev + e.text);
   });
 
-  return { items, streaming, loading };
+  useTauriEvent<{ sessionId: string; outputTokens: number }>(SESSION_TOKENS, (e) => {
+    if (e.sessionId === sessionId) setTurnTokens((prev) => prev + e.outputTokens);
+  });
+
+  return { items, streaming, loading, turnTokens };
 }

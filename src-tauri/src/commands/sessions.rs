@@ -140,6 +140,8 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
         workspace,
+        input_tokens: 0,
+        output_tokens: 0,
     };
 
     if session.mode == SessionMode::Isolated {
@@ -278,6 +280,8 @@ pub fn duplicate_session(app: AppHandle, store: State<Store>, session_id: String
         pending: Vec::new(),
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
+        input_tokens: 0,
+        output_tokens: 0,
         ..source.clone()
     };
     History::new(&store.dir()).copy(&source.id, &copy.id)?;

@@ -6,6 +6,7 @@ import { t } from "../i18n";
 export const SESSION_CHANGED = "session-changed";
 export const SESSION_ITEM = "session-item";
 export const SESSION_DELTA = "session-delta";
+export const SESSION_TOKENS = "session-tokens";
 export const SESSION_DELETED = "session-deleted";
 
 /** Claude Code permission modes, in Shift+Tab cycling order. */

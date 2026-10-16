@@ -296,6 +296,8 @@ mod tests {
         approvals: Vec::new(),
         allowed_tools: Vec::new(),
         workspace: None,
+        input_tokens: 0,
+        output_tokens: 0,
                 });
                 Ok(())
             })

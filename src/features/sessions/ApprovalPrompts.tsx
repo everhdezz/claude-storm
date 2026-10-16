@@ -21,10 +21,10 @@ interface Question {
  * each card is answered.
  */
 export function ApprovalPrompts({ session }: { session: Session }) {
-  if (session.approvals.length === 0) return <AllowedToolsBar session={session} />;
+  if (session.approvals.length === 0) return null;
+  // Rendered at the end of the thread so long question sets scroll with the conversation.
   return (
-    <Stack gap={8} mb={8}>
-      <AllowedToolsBar session={session} />
+    <Stack gap={8} className={classes.approvals} data-approvals>
       {session.approvals.map((a) =>
         a.toolName === "AskUserQuestion" ? (
           <QuestionCard key={a.id} session={session} request={a} />
@@ -37,7 +37,7 @@ export function ApprovalPrompts({ session }: { session: Session }) {
 }
 
 /** What is already allowed "always" in this session, with a way to take it back. */
-function AllowedToolsBar({ session }: { session: Session }) {
+export function AllowedToolsBar({ session }: { session: Session }) {
   const rules = session.allowedTools ?? [];
   if (rules.length === 0) return null;
   const all = rules.includes("*");

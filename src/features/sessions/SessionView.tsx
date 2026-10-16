@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ActionIcon, Badge, Center, Group, Loader, Menu, ScrollArea, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, Center, Group, Loader, Menu, ScrollArea, Text, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconDots, IconFileDiff, IconGitBranch, IconGitCommit, IconGitMerge, IconTrash } from "@tabler/icons-react";
+import { IconArrowDown, IconDots, IconFileDiff, IconGitBranch, IconGitCommit, IconGitMerge, IconTrash } from "@tabler/icons-react";
 import { useNavigate, useParams } from "react-router";
 import {
   isBusy,
@@ -14,7 +14,7 @@ import {
   stopSession,
 } from "../../api/sessions";
 import { notifyError, notifySuccess } from "../../hooks/notify";
-import type { Session } from "../../types";
+import type { ChatItem, Session } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
 import { ChatItems } from "./ChatItems";
 import { Composer } from "./Composer";
@@ -25,11 +25,15 @@ import { WorktreeActions } from "./WorktreeActions";
 import { CapabilitySummary } from "./CapabilitySummary";
 import { ServeBanner } from "./ServeBanner";
 import { PendingQueue } from "./PendingQueue";
-import { ApprovalPrompts } from "./ApprovalPrompts";
+import { AllowedToolsBar, ApprovalPrompts } from "./ApprovalPrompts";
 import { StickyPrompt } from "./StickyPrompt";
+import { WorkingLine } from "./TurnStats";
 import classes from "./sessions.module.css";
 import projectClasses from "../project/project.module.css";
 import { t } from "../../i18n";
+
+/** Distance from the bottom, in px, that still counts as "reading the latest". */
+const BOTTOM_SLACK = 80;
 
 /** Center island for a selected session: conversation, branch actions and composer. */
 export function SessionView() {
@@ -37,17 +41,51 @@ export function SessionView() {
   const { project, sessions, settings, account, refreshGit } = useProjectContext();
   const navigate = useNavigate();
   const session = sessions.find((s) => s.id === sessionId);
-  const { items, streaming, loading } = useSessionChat(sessionId);
+  const { items, streaming, loading, turnTokens } = useSessionChat(sessionId);
   const [diffOpen, setDiffOpen] = useState(false);
   const [injected, setInjected] = useState<{ text: string; seq: number } | null>(null);
   useEffect(() => setInjected(null), [sessionId]);
   const viewport = useRef<HTMLDivElement>(null);
   const previousStatus = useRef(session?.status);
+  // Follow new output only while the reader is at the bottom; scrolling up pauses it.
+  const pinned = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
 
-  useEffect(() => {
+  function scrollToBottom() {
     const el = viewport.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [items.length, streaming]);
+    pinned.current = true;
+    setAtBottom(true);
+  }
+
+  function onScroll() {
+    const el = viewport.current;
+    if (!el) return;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK;
+    pinned.current = bottom;
+    setAtBottom(bottom);
+  }
+
+  useEffect(() => scrollToBottom(), [sessionId, loading]);
+
+  const lastKind = items[items.length - 1]?.kind;
+  useEffect(() => {
+    // A prompt the user just sent always brings the thread back down.
+    if (pinned.current || lastKind === "prompt") scrollToBottom();
+  }, [items.length, streaming, lastKind]);
+
+  // A new question or permission opens at its top, so long question sets read from the start.
+  const approvalCount = session?.approvals.length ?? 0;
+  const previousApprovals = useRef(approvalCount);
+  useEffect(() => {
+    const grew = approvalCount > previousApprovals.current;
+    previousApprovals.current = approvalCount;
+    if (!grew || !pinned.current) return;
+    const el = viewport.current;
+    const cards = el?.querySelector<HTMLElement>("[data-approvals]");
+    // Leave room for the sticky "last message" bar over the top of the thread.
+    if (el && cards) el.scrollTop += cards.getBoundingClientRect().top - el.getBoundingClientRect().top - 52;
+  }, [approvalCount]);
 
   useEffect(() => {
     if (previousStatus.current === "working" && session && session.status !== "working") refreshGit();
@@ -210,7 +248,7 @@ export function SessionView() {
       <ServeBanner session={session} />
       <div className={classes.threadWrap}>
       <StickyPrompt viewport={viewport} items={items} />
-      <ScrollArea style={{ flex: 1 }} viewportRef={viewport} type="auto">
+      <ScrollArea style={{ flex: 1 }} viewportRef={viewport} type="auto" onScrollPositionChange={onScroll}>
         {loading ? (
           <Center py="xl">
             <Loader size="sm" />
@@ -218,20 +256,33 @@ export function SessionView() {
         ) : (
           <ChatItems items={items} streaming={streaming} />
         )}
-        {session.status === "working" && !streaming && (
-          <Group justify="center" pb="md">
-            <Loader size="xs" type="dots" />
-          </Group>
-        )}
+        <ApprovalPrompts session={session} />
+        {session.status === "working" && <WorkingLine since={lastPromptAt(items)} tokens={turnTokens} streaming={streaming} />}
         {session.status === "interrupted" && (
           <Text size="xs" c="yellow.4" ta="center" pb="md">
             {t("The session was interrupted. Write a message (for example “continue”) to resume it.")}
           </Text>
         )}
       </ScrollArea>
+      {!atBottom && (
+        <Button
+          className={classes.jumpLatest}
+          size="compact-xs"
+          radius="xl"
+          variant="default"
+          leftSection={<IconArrowDown size={13} />}
+          onClick={scrollToBottom}
+        >
+          {session.approvals.length > 0
+            ? t("Claude is waiting for you")
+            : session.status === "working"
+              ? t("New activity")
+              : t("Jump to latest")}
+        </Button>
+      )}
       </div>
       <div className={classes.composerWrap}>
-        <ApprovalPrompts session={session} />
+        <AllowedToolsBar session={session} />
         <PendingQueue session={session} onEdit={(text) => setInjected((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }))} />
         <Composer
           key={session.id}
@@ -274,4 +325,13 @@ function confirm(title: string, body: string, confirmLabel: string): Promise<boo
       onClose: () => resolve(false),
     });
   });
+}
+
+/** When the turn in progress started: the last prompt sent. */
+function lastPromptAt(items: ChatItem[]): string | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.kind === "prompt") return item.at;
+  }
+  return null;
 }

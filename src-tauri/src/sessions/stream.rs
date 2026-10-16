@@ -26,7 +26,18 @@ pub enum ChatItem {
     Text { text: String },
     ToolUse { id: String, name: String, input: Value },
     ToolResult { tool_use_id: String, content: String, is_error: bool },
-    Result { ok: bool, text: String, cost_usd: Option<f64>, duration_ms: Option<u64>, turns: Option<u64> },
+    Result {
+        ok: bool,
+        text: String,
+        cost_usd: Option<f64>,
+        duration_ms: Option<u64>,
+        turns: Option<u64>,
+        /// Prompt tokens sent, cache reads and writes included.
+        #[serde(default)]
+        input_tokens: Option<u64>,
+        #[serde(default)]
+        output_tokens: Option<u64>,
+    },
     Notice { level: String, text: String },
 }
 
@@ -43,6 +54,8 @@ pub struct RateWindow {
 pub struct Parsed {
     pub items: Vec<ChatItem>,
     pub delta: Option<String>,
+    /// Output tokens of an assistant message that just finished streaming.
+    pub output_tokens: Option<u64>,
     pub started: bool,
     pub model: Option<String>,
     pub rate_windows: Vec<RateWindow>,
@@ -58,6 +71,9 @@ pub fn parse_line(line: &str) -> Parsed {
             out.model = v.get("model").and_then(Value::as_str).map(str::to_string);
         }
         Some("stream_event") => {
+            if v.pointer("/event/type").and_then(Value::as_str) == Some("message_delta") {
+                out.output_tokens = v.pointer("/event/usage/output_tokens").and_then(Value::as_u64);
+            }
             let delta = v.pointer("/event/delta");
             if delta.and_then(|d| d.get("type")).and_then(Value::as_str) == Some("text_delta") {
                 out.delta = delta.and_then(|d| d.get("text")).and_then(Value::as_str).map(str::to_string);
@@ -101,6 +117,13 @@ pub fn parse_line(line: &str) -> Parsed {
                 cost_usd: v.get("total_cost_usd").and_then(Value::as_f64),
                 duration_ms: v.get("duration_ms").and_then(Value::as_u64),
                 turns: v.get("num_turns").and_then(Value::as_u64),
+                input_tokens: v.get("usage").map(|u| {
+                    ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
+                        .iter()
+                        .filter_map(|k| u.get(*k).and_then(Value::as_u64))
+                        .sum()
+                }),
+                output_tokens: v.pointer("/usage/output_tokens").and_then(Value::as_u64),
             });
         }
         Some("rate_limit_event") => {
@@ -186,6 +209,10 @@ mod tests {
         assert!(matches!(&items[0], ChatItem::ToolUse { name, .. } if name == "Read"));
         assert!(matches!(&items[1], ChatItem::ToolResult { content, is_error: false, .. } if content.contains("hola")));
         assert!(matches!(&items[3], ChatItem::Result { ok: true, text, .. } if text == "hola"));
+        assert!(matches!(
+            &items[3],
+            ChatItem::Result { input_tokens: Some(45_511), output_tokens: Some(116), .. }
+        ));
     }
 
     #[test]
@@ -195,6 +222,8 @@ mod tests {
         assert!(parsed.iter().any(|p| p.model.as_deref() == Some("claude-haiku-5-5")));
         let text: String = parsed.iter().filter_map(|p| p.delta.clone()).collect();
         assert_eq!(text, "hola");
+        let tokens: Vec<u64> = parsed.iter().filter_map(|p| p.output_tokens).collect();
+        assert_eq!(tokens, [112, 4]);
         let windows: Vec<_> = parsed.iter().flat_map(|p| p.rate_windows.clone()).collect();
         let five = windows.iter().find(|w| w.key == "five_hour").unwrap();
         assert!((five.utilization - 0.02).abs() < 1e-9);

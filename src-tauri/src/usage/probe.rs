@@ -116,6 +116,7 @@ fn drive(
     shown: &dyn Fn(&str) -> bool,
 ) -> AppResult<()> {
     let deadline = std::time::Instant::now() + Duration::from_secs(45);
+    let mut dismissed = 0;
     loop {
         screen.pump();
         let text = screen.text();
@@ -133,6 +134,13 @@ fn drive(
             std::thread::sleep(Duration::from_millis(1500));
         } else if login_needed(&text) {
             return Err(AppError::msg("This Claude profile is not logged in."));
+        } else if dismissable_dialog(&text) && dismissed < 5 {
+            // Startup notices like "Claude in Chrome extension detected": Esc takes the conservative choice.
+            dismissed += 1;
+            writer.write_all(b"\x1b")?;
+            writer.flush()?;
+            screen.wait(Duration::from_secs(3), |t| !dismissable_dialog(t));
+            continue;
         } else if prompt_ready(&text) {
             break;
         }
@@ -181,6 +189,11 @@ fn accept_trust_dialog(screen: &mut Screen, writer: &mut Box<dyn Write + Send>) 
 /// First-run screens of a new profile that only need Enter (theme picker, security notes).
 fn first_run_screen(text: &str) -> bool {
     text.contains("Choose the text style") || text.contains("Press Enter to continue")
+}
+
+/// A startup choice dialog that Esc closes with its safe default (e.g. "Esc to keep browser tools off").
+fn dismissable_dialog(text: &str) -> bool {
+    !needs_trust(text) && !first_run_screen(text) && text.contains("Enter to confirm") && text.contains("Esc to")
 }
 
 /// The input prompt box is visible and no dialog or menu is on screen.
@@ -288,11 +301,24 @@ mod manual {
 
 #[cfg(test)]
 mod screen_tests {
-    use super::{first_run_screen, prompt_ready};
+    use super::{dismissable_dialog, first_run_screen, needs_trust, prompt_ready};
 
     const THEME: &str = "Welcome to Claude Code v2.1.300\n Choose the text style that looks best with your terminal\n ❯ ✔ Dark mode\n     Light mode";
     const NOTES: &str = "Welcome to Claude Code\n Security notes:\n 1. Claude can make mistakes.\n Press Enter to continue…";
     const PROMPT: &str = "────────────\n❯\u{a0}Try \"fix lint errors\"\n────────────\n  ⏵⏵ auto mode on";
+    const CHROME: &str = "────────\n  Claude in Chrome extension detected\n\n  Claude will use your Chrome browser by default\n\n  ❯ No, keep browser tools off\n    Yes, use my browser\n\n  Enter to confirm · Esc to keep browser tools off";
+    const TRUST: &str = "Do you trust the files in this folder?\n ❯ 1. Yes, proceed\n   2. No, exit\n Enter to confirm · Esc to exit";
+
+    #[test]
+    fn startup_notices_are_dismissed_with_esc() {
+        assert!(dismissable_dialog(CHROME) && !prompt_ready(CHROME));
+        assert!(!dismissable_dialog(PROMPT));
+    }
+
+    #[test]
+    fn trust_dialog_is_never_auto_dismissed() {
+        assert!(needs_trust(TRUST) && !dismissable_dialog(TRUST));
+    }
 
     #[test]
     fn first_run_screens_are_not_the_prompt() {

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="gTerra" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F0A07E"/>
+      <stop offset="1" stop-color="#C15F3C"/>
+    </linearGradient>
+    <linearGradient id="gClay" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D97757"/>
+      <stop offset="1" stop-color="#5E2614"/>
+    </linearGradient>
+    <linearGradient id="gSand" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#F6E7D8"/>
+      <stop offset="1" stop-color="#D97757"/>
+    </linearGradient>
+    <clipPath id="shards"><path d="M96,150 L640,96 L928,250 L928,700 L700,928 L220,928 L96,700 Z"/></clipPath>
+  </defs>
+  <g clip-path="url(#shards)">
+    <polygon points="96,150 640,96 420,560 96,700" fill="url(#gTerra)"/>
+    <polygon points="520,96 928,250 928,760 610,520" fill="url(#gClay)"/>
+    <polygon points="96,560 560,430 928,700 700,928 220,928 96,800" fill="url(#gSand)"/>
+    <g stroke="#FAF9F5" stroke-opacity="0.55" stroke-width="6"><line x1="204" y1="289" x2="298" y2="196"/><line x1="298" y1="196" x2="434" y2="230"/><line x1="204" y1="289" x2="204" y2="476"/><line x1="434" y1="230" x2="621" y2="179"/><line x1="621" y1="179" x2="731" y2="238"/><line x1="731" y1="238" x2="808" y2="357"/><line x1="808" y1="357" x2="842" y2="553"/><line x1="842" y1="553" x2="842" y2="740"/><line x1="842" y1="740" x2="774" y2="808"/><line x1="774" y1="808" x2="553" y2="842"/><line x1="553" y1="842" x2="332" y2="825"/><line x1="332" y1="825" x2="187" y2="672"/><line x1="187" y1="672" x2="204" y2="476"/><line x1="298" y1="196" x2="621" y2="179"/><line x1="808" y1="357" x2="842" y2="740"/></g><g fill="#FAF9F5"><circle cx="204" cy="289" r="15"/><circle cx="298" cy="196" r="15"/><circle cx="434" cy="230" r="15"/><circle cx="204" cy="476" r="15"/><circle cx="808" cy="357" r="15"/><circle cx="842" cy="553" r="15"/><circle cx="731" cy="238" r="15"/><circle cx="621" cy="179" r="15"/><circle cx="774" cy="808" r="15"/><circle cx="553" cy="842" r="15"/><circle cx="332" cy="825" r="15"/><circle cx="187" cy="672" r="15"/><circle cx="842" cy="740" r="15"/></g>
+  </g>
+  <!-- Claude spark peeking over the top-right corner -->
+  <circle cx="790" cy="230" r="150" fill="#C15F3C"/>
+  <g stroke="#FAF9F5" stroke-width="24" stroke-linecap="round"><line x1="791.8" y1="215.7" x2="804.6" y2="110.9"/><line x1="798.7" y1="218.5" x2="846.3" y2="155.2"/><line x1="803.3" y1="224.4" x2="891.6" y2="186.9"/><line x1="804.3" y1="231.8" x2="873.4" y2="240.2"/><line x1="801.5" y1="238.7" x2="885.8" y2="302.2"/><line x1="795.6" y1="243.3" x2="828.4" y2="320.6"/><line x1="788.2" y1="244.3" x2="776.1" y2="343.2"/><line x1="781.3" y1="241.5" x2="738.0" y2="299.0"/><line x1="776.7" y1="235.6" x2="679.5" y2="276.9"/><line x1="775.7" y1="228.2" x2="694.7" y2="218.3"/><line x1="778.5" y1="221.3" x2="703.7" y2="165.0"/><line x1="784.4" y1="216.7" x2="754.8" y2="147.2"/></g>
+  <!-- black tile, JetBrains-style -->
+  <rect x="242" y="282" width="500" height="500" fill="#141413"/>
+  <path d="M462 368 A88 96 0 1 0 462 502" stroke="#FAF9F5" stroke-width="42" fill="none"/>
+  <path d="M655 374 C634 338 528 338 528 396 C528 453 662 430 662 490 C662 547 547 544 520 506" stroke="#FAF9F5" stroke-width="42" fill="none"/>
+  <rect x="296" y="684" width="190" height="38" fill="#D97757"/>
+</svg>

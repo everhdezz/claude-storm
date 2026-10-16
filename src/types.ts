@@ -199,6 +199,9 @@ export interface Session {
   approvals: ApprovalRequest[];
   /** What the user allowed "always" in this session: a tool name, `Bash:<command>`, or `*` for everything. */
   allowedTools: string[];
+  /** Tokens used by every turn so far: prompt tokens (cache included) and output tokens. */
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export interface ApprovalRequest {
@@ -232,7 +235,7 @@ export type ChatItem =
   | { kind: "text"; text: string }
   | { kind: "toolUse"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "toolResult"; toolUseId: string; content: string; isError: boolean }
-  | { kind: "result"; ok: boolean; text: string; costUsd: number | null; durationMs: number | null; turns: number | null }
+  | { kind: "result"; ok: boolean; text: string; costUsd: number | null; durationMs: number | null; turns: number | null; inputTokens?: number | null; outputTokens?: number | null }
   | { kind: "notice"; level: "info" | "warn" | "error"; text: string };
 
 export interface NewSessionInput {

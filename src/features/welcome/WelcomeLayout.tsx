@@ -2,6 +2,7 @@ import { ActionIcon, Text } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { NavLink, Outlet } from "react-router";
 import { APP_VERSION, channelLabel } from "../../version";
+import appIcon from "../../assets/app-icon.svg";
 import classes from "./welcome.module.css";
 import { t } from "../../i18n";
 
@@ -18,7 +19,7 @@ export function WelcomeLayout() {
     <div className={classes.shell}>
       <aside className={classes.sidebar}>
         <div className={classes.brand}>
-          <div className={classes.logo}>CS</div>
+          <img className={classes.logo} src={appIcon} alt="" />
           <div>
             <Text fw={600} lh={1.2}>
               ClaudeStorm

@@ -23,13 +23,8 @@
 .logo {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, var(--mantine-color-indigo-6), var(--mantine-color-grape-6));
-  color: white;
-  font-weight: 800;
-  font-size: 13px;
+  flex-shrink: 0;
+  display: block;
 }
 
 .navItem {

@@ -13,6 +13,12 @@
   color: var(--mantine-color-gray-2);
 }
 
+/* Lets long project paths truncate instead of widening the dropdown. */
+.menuItemLabel {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .switcher:hover {
   background: var(--dh-hover);
 }

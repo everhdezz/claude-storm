@@ -90,6 +90,13 @@
   border-top: 1px solid var(--dh-island-border);
 }
 
+.toolGroupBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
 .code {
   margin: 0;
   padding: 8px 12px;
@@ -133,6 +140,17 @@
 
 .resultLine {
   text-align: center;
+}
+
+.turnStats {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lines up with .thread, which it follows. */
+.workingLine {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 .notice {
@@ -282,6 +300,15 @@
   flex-direction: column;
 }
 
+.jumpLatest {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  box-shadow: var(--mantine-shadow-md);
+}
+
 .stickyPrompt {
   position: absolute;
   top: 6px;
@@ -313,6 +340,12 @@
 .stickyIcon {
   flex-shrink: 0;
   color: var(--mantine-color-indigo-2);
+}
+
+.approvals {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px 12px;
 }
 
 .approval {

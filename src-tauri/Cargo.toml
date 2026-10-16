@@ -1,6 +1,6 @@
 [package]
 name = "claude-storm"
-version = "0.6.3"
+version = "0.6.4"
 description = "Desktop console to run many Claude Code sessions in parallel across the repos of a project"
 license = "Apache-2.0"
 authors = ["Ever Hernandez (@everhdezz)"]
