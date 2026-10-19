@@ -202,6 +202,8 @@ export interface Session {
   /** Tokens used by every turn so far: prompt tokens (cache included) and output tokens. */
   inputTokens: number;
   outputTokens: number;
+  /** Background work (shell commands, subagents, monitors) Claude Code is still waiting on. */
+  backgroundTasks: string[];
 }
 
 export interface ApprovalRequest {

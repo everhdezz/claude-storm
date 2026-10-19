@@ -298,6 +298,7 @@ mod tests {
         workspace: None,
         input_tokens: 0,
         output_tokens: 0,
+        background_tasks: Vec::new(),
                 });
                 Ok(())
             })

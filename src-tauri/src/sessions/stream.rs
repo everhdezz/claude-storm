@@ -12,7 +12,9 @@ const EDIT_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit", "NotebookEdit"];
 
 /// One renderable entry of a session conversation (persisted as JSONL).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+// `rename_all` only renames variants; `rename_all_fields` makes the fields camelCase too, as the UI expects.
+// The aliases keep reading history written before that (snake_case fields).
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum ChatItem {
     Prompt {
         text: String,
@@ -25,17 +27,25 @@ pub enum ChatItem {
     },
     Text { text: String },
     ToolUse { id: String, name: String, input: Value },
-    ToolResult { tool_use_id: String, content: String, is_error: bool },
+    ToolResult {
+        #[serde(alias = "tool_use_id")]
+        tool_use_id: String,
+        content: String,
+        #[serde(alias = "is_error")]
+        is_error: bool,
+    },
     Result {
         ok: bool,
         text: String,
+        #[serde(alias = "cost_usd")]
         cost_usd: Option<f64>,
+        #[serde(alias = "duration_ms")]
         duration_ms: Option<u64>,
         turns: Option<u64>,
         /// Prompt tokens sent, cache reads and writes included.
-        #[serde(default)]
+        #[serde(default, alias = "input_tokens")]
         input_tokens: Option<u64>,
-        #[serde(default)]
+        #[serde(default, alias = "output_tokens")]
         output_tokens: Option<u64>,
     },
     Notice { level: String, text: String },
@@ -59,6 +69,12 @@ pub struct Parsed {
     pub started: bool,
     pub model: Option<String>,
     pub rate_windows: Vec<RateWindow>,
+    /// Background tasks still running (bash, subagents, monitors), when Claude Code reports a change.
+    pub background: Option<Vec<String>>,
+    /// A background task finished and Claude Code is about to tell Claude.
+    pub task_notified: bool,
+    /// The main agent (not a subagent) produced a message.
+    pub assistant: bool,
 }
 
 /// Parses one stdout line; unknown or malformed lines yield an empty result.
@@ -80,6 +96,7 @@ pub fn parse_line(line: &str) -> Parsed {
             }
         }
         Some("assistant") => {
+            out.assistant = v.get("parent_tool_use_id").is_none_or(Value::is_null);
             for block in content_blocks(&v) {
                 match block.get("type").and_then(Value::as_str) {
                     Some("text") => {
@@ -125,6 +142,21 @@ pub fn parse_line(line: &str) -> Parsed {
                 }),
                 output_tokens: v.pointer("/usage/output_tokens").and_then(Value::as_u64),
             });
+        }
+        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("background_tasks_changed") => {
+            let tasks = v.get("tasks").and_then(Value::as_array).cloned().unwrap_or_default();
+            out.background = Some(
+                tasks
+                    .iter()
+                    .map(|t| {
+                        let description = str_field(t, "description");
+                        if description.is_empty() { str_field(t, "task_type") } else { description }
+                    })
+                    .collect(),
+            );
+        }
+        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("task_notification") => {
+            out.task_notified = true;
         }
         Some("rate_limit_event") => {
             if let Some(windows) = v.pointer("/rate_limit_info/unifiedWindows").and_then(Value::as_object) {
@@ -185,6 +217,32 @@ fn truncate(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tracks_background_tasks() {
+        let changed = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"b1","task_type":"local_bash","description":"Build the app"},{"task_id":"a1","task_type":"local_agent"}]}"#;
+        assert_eq!(parse_line(changed).background, Some(vec!["Build the app".to_string(), "local_agent".to_string()]));
+        assert_eq!(parse_line(r#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#).background, Some(vec![]));
+        assert!(parse_line(r#"{"type":"system","subtype":"task_notification","task_id":"b1","status":"completed"}"#).task_notified);
+        let sub = r#"{"type":"assistant","parent_tool_use_id":"toolu_1","message":{"content":[{"type":"text","text":"hi"}]}}"#;
+        assert!(!parse_line(sub).assistant);
+        let main = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"hi"}]}}"#;
+        assert!(parse_line(main).assistant);
+    }
+
+    /// Regression: fields went out as `tool_use_id`/`is_error`, so the UI never matched a tool
+    /// call with its result and every call stayed "running".
+    #[test]
+    fn chat_items_use_camel_case_fields_and_read_old_history() {
+        let item = ChatItem::ToolResult { tool_use_id: "t1".into(), content: "ok".into(), is_error: true };
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json, serde_json::json!({ "kind": "toolResult", "toolUseId": "t1", "content": "ok", "isError": true }));
+
+        let old: ChatItem = serde_json::from_str(r#"{"kind":"toolResult","tool_use_id":"t1","content":"ok","is_error":true}"#).unwrap();
+        assert_eq!(old, item);
+        let old: ChatItem = serde_json::from_str(r#"{"kind":"result","ok":true,"text":"","cost_usd":0.1,"duration_ms":5,"turns":1}"#).unwrap();
+        assert!(matches!(old, ChatItem::Result { duration_ms: Some(5), input_tokens: None, .. }));
+    }
 
     const FIXTURE: &str = include_str!("../../tests/fixtures/stream/read-file.jsonl");
 

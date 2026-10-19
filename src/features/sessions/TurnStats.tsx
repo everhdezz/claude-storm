@@ -28,7 +28,17 @@ export function formatTokens(n: number): string {
 }
 
 /** Live line while Claude works: elapsed time and output tokens so far. */
-export function WorkingLine({ since, tokens, streaming }: { since: string | null; tokens: number; streaming: string }) {
+export function WorkingLine({
+  since,
+  tokens,
+  streaming,
+  background = [],
+}: {
+  since: string | null;
+  tokens: number;
+  streaming: string;
+  background?: string[];
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -40,7 +50,7 @@ export function WorkingLine({ since, tokens, streaming }: { since: string | null
     <Group gap={8} className={`${classes.turnStats} ${classes.workingLine}`} pb="md">
       <Loader size="xs" type="dots" />
       <Text size="xs" c="dimmed">
-        {t("Working…")}
+        {background.length > 0 ? t("Waiting for background work: {tasks}", { tasks: background.join(", ") }) : t("Working…")}
         {parts.some(Boolean) && ` (${parts.filter(Boolean).join(" · ")})`}
       </Text>
     </Group>

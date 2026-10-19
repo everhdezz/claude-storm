@@ -1,4 +1,5 @@
 import { ActionIcon, Button, Group, Text, Tooltip } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { IconClockHour4, IconPaperclip, IconPencil, IconPlayerTrackNext, IconX } from "@tabler/icons-react";
 import { isBusy, sessionRemovePending, sessionSendNow } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
@@ -13,6 +14,25 @@ import { t } from "../../i18n";
 export function PendingQueue({ session, onEdit }: { session: Session; onEdit: (text: string) => void }) {
   if (session.pending.length === 0) return null;
   const working = isBusy(session);
+
+  function sendNow() {
+    const send = () => sessionSendNow(session.id).catch((err) => notifyError(err, t("Could not send")));
+    const background = session.backgroundTasks ?? [];
+    if (!working || background.length === 0) return void send();
+    // Interrupting stops Claude Code, and its background work with it.
+    modals.openConfirmModal({
+      title: t("Claude is waiting for background work"),
+      centered: true,
+      children: (
+        <Text size="sm">
+          {t("Sending now stops it ({tasks}). Your messages also go out on their own as soon as it finishes.", { tasks: background.join(", ") })}
+        </Text>
+      ),
+      labels: { confirm: t("Send now"), cancel: t("Wait") },
+      confirmProps: { color: "red" },
+      onConfirm: send,
+    });
+  }
 
   async function edit(id: string) {
     try {
@@ -39,7 +59,7 @@ export function PendingQueue({ session, onEdit }: { session: Session; onEdit: (t
             size="compact-xs"
             variant="light"
             leftSection={<IconPlayerTrackNext size={12} />}
-            onClick={() => sessionSendNow(session.id).catch((err) => notifyError(err, t("Could not send")))}
+            onClick={sendNow}
           >
             {working ? t("Send now") : t("Send")}
           </Button>

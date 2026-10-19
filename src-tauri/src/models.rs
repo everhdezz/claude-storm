@@ -170,6 +170,9 @@ pub struct Session {
     pub input_tokens: u64,
     #[serde(default)]
     pub output_tokens: u64,
+    /// Background work (bash, subagents, monitors) Claude Code is still waiting on in this turn.
+    #[serde(default)]
+    pub background_tasks: Vec<String>,
 }
 
 /// Something Claude Code needs the user to decide: a tool permission or an AskUserQuestion.

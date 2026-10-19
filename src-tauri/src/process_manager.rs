@@ -89,9 +89,17 @@ pub struct SpawnRequest {
 
 struct Managed {
     info: ProcessInfo,
+    /// Set while the OS process is alive; cleared once it has been reaped.
     tree: Option<Arc<ProcessTree>>,
     logs: VecDeque<LogLine>,
     next_seq: u64,
+}
+
+impl Managed {
+    /// Whether the process is still alive. A "running"/"stopping" status without a tree is stale.
+    fn is_live(&self) -> bool {
+        self.tree.is_some()
+    }
 }
 
 /// Registry of every command started from any project window.
@@ -144,7 +152,7 @@ impl ProcessManager {
     /// Forgets finished processes of a project (used by the "clear" button).
     pub fn forget(&self, id: &str) {
         let mut procs = self.procs.lock().unwrap();
-        if procs.get(id).is_some_and(|m| !matches!(m.info.status, ProcessStatus::Running | ProcessStatus::Stopping)) {
+        if procs.get(id).is_some_and(|m| !m.is_live()) {
             procs.remove(id);
         }
     }
@@ -152,7 +160,7 @@ impl ProcessManager {
     /// Spawns a command through the login shell and starts streaming its output.
     pub fn spawn<R: Runtime>(&self, app: &AppHandle<R>, req: SpawnRequest) -> AppResult<ProcessInfo> {
         let id = process_id(&req.repo_id, &req.command_id);
-        if self.procs.lock().unwrap().get(&id).is_some_and(|m| matches!(m.info.status, ProcessStatus::Running | ProcessStatus::Stopping)) {
+        if self.procs.lock().unwrap().get(&id).is_some_and(Managed::is_live) {
             return Err(AppError::msg(format!("\"{}\" is already running", req.label)));
         }
 
@@ -235,6 +243,15 @@ impl ProcessManager {
         let tree = {
             let mut procs = self.procs.lock().unwrap();
             let m = procs.get_mut(id).ok_or_else(|| AppError::NotFound(format!("process {id}")))?;
+            if !m.is_live() {
+                // Already gone: settle a stale "running"/"stopping" so the UI can start it again.
+                if matches!(m.info.status, ProcessStatus::Running | ProcessStatus::Stopping) {
+                    m.info.status = ProcessStatus::Stopped;
+                    m.info.ready = false;
+                }
+                emit_status(app, &m.info);
+                return Ok(());
+            }
             m.info.status = ProcessStatus::Stopping;
             emit_status(app, &m.info);
             m.tree.clone()
@@ -251,7 +268,7 @@ impl ProcessManager {
             let mut procs = self.procs.lock().unwrap();
             procs
                 .values_mut()
-                .filter(|m| m.info.project_id == project_id)
+                .filter(|m| m.info.project_id == project_id && m.is_live())
                 .filter_map(|m| {
                     m.info.status = ProcessStatus::Stopping;
                     m.tree.clone()
@@ -417,6 +434,42 @@ mod integration {
 
         manager.stop(&handle, &info.id).await.unwrap();
         wait_for(&handle, "stopped", |m| m.list("p")[0].status == ProcessStatus::Stopped).await;
+    }
+
+    /// Regression: closing a project window marked finished processes as "stopping" forever,
+    /// so they could not be started, stopped or cleared again.
+    #[tokio::test]
+    async fn finished_processes_never_get_stuck_stopping() {
+        let app = tauri::test::mock_builder()
+            .manage(ProcessManager::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let handle = app.handle().clone();
+        let manager = handle.state::<ProcessManager>();
+        let request = || SpawnRequest {
+            project_id: "p".into(),
+            repo_id: "r".into(),
+            command_id: "c".into(),
+            label: "echo".into(),
+            command: "echo ok".into(),
+            cwd: std::env::temp_dir().to_string_lossy().to_string(),
+            session_id: None,
+            started_by: None,
+            long_running: false,
+            port: None,
+        };
+        let info = manager.spawn(&handle, request()).unwrap();
+        wait_for(&handle, "exited", |m| m.list("p")[0].status == ProcessStatus::Exited).await;
+
+        manager.stop_project("p");
+        assert_eq!(manager.list("p")[0].status, ProcessStatus::Exited, "window close must not touch finished processes");
+
+        // A status left stale by older builds is settled by stop and does not block a new start.
+        manager.update(&info.id, |m| m.info.status = ProcessStatus::Stopping);
+        manager.stop(&handle, &info.id).await.unwrap();
+        assert_eq!(manager.list("p")[0].status, ProcessStatus::Stopped);
+        manager.update(&info.id, |m| m.info.status = ProcessStatus::Stopping);
+        manager.spawn(&handle, request()).expect("a stale status must not block starting again");
     }
 
     /// Regression: sync Tauri commands run on the main thread without a Tokio context.

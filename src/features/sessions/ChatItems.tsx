@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Badge, Group, Paper, Text, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile, IconStack2 } from "@tabler/icons-react";
+import { Fragment, useState } from "react";
+import { Badge, Group, Loader, Paper, Text, UnstyledButton } from "@mantine/core";
+import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile, IconListDetails, IconStack2 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { modelLabel } from "../../api/sessions";
@@ -48,48 +48,186 @@ function segment(items: ChatItem[]): Segment[] {
   return out;
 }
 
-/** Renders a conversation, pairing each tool call with its result. */
-export function ChatItems({ items, streaming }: { items: ChatItem[]; streaming: string }) {
+type Entry = { item: ChatItem; index: number };
+
+/**
+ * One prompt and everything Claude did for it. `activity` is the work (narration and tool calls),
+ * `answer` the text after the last tool call, shown as the reply once the turn is over.
+ */
+interface Turn {
+  prompt: Entry | null;
+  activity: Entry[];
+  answer: Entry[];
+  /** Notices and the final result line, always visible. */
+  trailer: Entry[];
+  live: boolean;
+}
+
+/** Splits the conversation into turns; the last one is live while the session works. */
+function toTurns(items: ChatItem[], working: boolean): Turn[] {
+  const turns: { prompt: Entry | null; body: Entry[] }[] = [];
+  items.forEach((item, index) => {
+    if (item.kind === "prompt") turns.push({ prompt: { item, index }, body: [] });
+    else {
+      if (turns.length === 0) turns.push({ prompt: null, body: [] });
+      turns[turns.length - 1]!.body.push({ item, index });
+    }
+  });
+  return turns.map(({ prompt, body }, i) => {
+    const content = body.filter((e) => e.item.kind === "text" || e.item.kind === "toolUse");
+    const trailer = body.filter((e) => e.item.kind === "notice" || e.item.kind === "result");
+    // A result followed by more work (Claude resumed after a background task) makes the turn live again.
+    const live = working && i === turns.length - 1 && body[body.length - 1]?.item.kind !== "result";
+    let lastTool = -1;
+    content.forEach((e, k) => e.item.kind === "toolUse" && (lastTool = k));
+    if (lastTool === -1) return { prompt, activity: [], answer: content, trailer, live };
+    // While Claude works every word may still be narration, so it all stays in the activity.
+    if (live) return { prompt, activity: content, answer: [], trailer, live };
+    return { prompt, activity: content.slice(0, lastTool + 1), answer: content.slice(lastTool + 1), trailer, live };
+  });
+}
+
+/** Renders a conversation: per turn, the work collapses into one activity block and the reply stands apart. */
+export function ChatItems({ items, streaming, working = false }: { items: ChatItem[]; streaming: string; working?: boolean }) {
   const results = new Map<string, ToolResult>();
   for (const item of items) if (item.kind === "toolResult") results.set(item.toolUseId, item);
+  const turns = toTurns(items, working);
 
   return (
     <div className={classes.thread}>
-      {segment(items).map((seg) => {
-        if ("group" in seg) return <ToolGroup key={seg.group[0]!.index} calls={seg.group} results={results} />;
-        const { item, index } = seg;
-        switch (item.kind) {
-          case "prompt":
-            return <PromptBubble key={index} item={item} />;
-          case "text":
-            return <Markdown key={index} text={item.text} />;
-          case "toolUse":
-            return <ToolBlock key={index} use={item} result={results.get(item.id)} />;
-          case "result":
-            return (
-              <div key={index}>
-                {!item.ok && (
-                  <Text size="xs" c="red.4" className={classes.resultLine}>
-                    {item.text ? t("Claude ended with an error: {text}", { text: item.text }) : t("Claude ended with an error")}
-                  </Text>
-                )}
-                <ResultStats item={item} />
-              </div>
-            );
-          case "notice":
-            return (
-              <Group key={index} gap={6} className={classes.notice} data-level={item.level}>
-                {item.level !== "info" && <IconAlertTriangle size={14} />}
-                <Text size="xs" style={{ whiteSpace: "pre-wrap" }}>
-                  {item.text}
-                </Text>
-              </Group>
-            );
-          default:
-            return null;
-        }
+      {turns.map((turn, i) => {
+        const last = i === turns.length - 1;
+        const liveStream = last && turn.live ? streaming : "";
+        return (
+          <Fragment key={turn.prompt?.index ?? `t${i}`}>
+            {turn.prompt && <PromptBubble item={turn.prompt.item as Extract<ChatItem, { kind: "prompt" }>} />}
+            {turn.activity.length > 0 && (
+              <Activity entries={turn.activity} results={results} live={turn.live} streaming={liveStream} />
+            )}
+            {turn.answer.map(({ item, index }) => (item.kind === "text" ? <Markdown key={index} text={item.text} /> : null))}
+            {/* Before the first tool call a reply streams as plain text, as in any chat. */}
+            {turn.activity.length === 0 && liveStream && <Markdown text={liveStream} />}
+            {turn.trailer.map(({ item, index }) => renderTrailer(item, index))}
+          </Fragment>
+        );
       })}
-      {streaming && <Markdown text={streaming} />}
+      {!working && streaming && <Markdown text={streaming} />}
+    </div>
+  );
+}
+
+/** Notices and the end-of-turn line. */
+function renderTrailer(item: ChatItem, index: number) {
+  if (item.kind === "result") {
+    return (
+      <div key={index}>
+        {!item.ok && (
+          <Text size="xs" c="red.4" className={classes.resultLine}>
+            {item.text ? t("Claude ended with an error: {text}", { text: item.text }) : t("Claude ended with an error")}
+          </Text>
+        )}
+        <ResultStats item={item} />
+      </div>
+    );
+  }
+  if (item.kind === "notice") {
+    return (
+      <Group key={index} gap={6} className={classes.notice} data-level={item.level}>
+        {item.level !== "info" && <IconAlertTriangle size={14} />}
+        <Text size="xs" style={{ whiteSpace: "pre-wrap" }}>
+          {item.text}
+        </Text>
+      </Group>
+    );
+  }
+  return null;
+}
+
+/** Last paragraph of a text as plain words (no Markdown markers), for the gray live status. */
+function lastParagraph(text: string): string {
+  const paragraphs = text.split(/\n\s*\n/).map((p) =>
+    p
+      .split("\n")
+      .map((l) => l.replace(/^[#>*\-\s\d.]+/, "").replace(/[*_`]/g, "").trim())
+      .filter(Boolean)
+      .join(" · "),
+  );
+  return paragraphs.filter(Boolean).pop() ?? "";
+}
+
+/**
+ * Collapsed record of what Claude did in a turn, like claude.ai: while it works the header shows
+ * its latest words in gray as they stream; afterwards, a count of the steps it took.
+ */
+function Activity({ entries, results, live, streaming }: { entries: Entry[]; results: Map<string, ToolResult>; live: boolean; streaming: string }) {
+  const [open, setOpen] = useState(false);
+  const uses = entries.flatMap((e) => (e.item.kind === "toolUse" ? [e.item] : []));
+  const counts = new Map<string, number>();
+  for (const use of uses) {
+    const label = toolInfo(use).label;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const breakdown = [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(" · ");
+  const errors = uses.filter((u) => results.get(u.id)?.isError).length;
+
+  let status = "";
+  if (live) {
+    const lastEntry = entries[entries.length - 1]?.item;
+    const pending = lastEntry?.kind === "toolUse" && !results.has(lastEntry.id) ? lastEntry : null;
+    const lastText = [...entries].reverse().find((e) => e.item.kind === "text")?.item;
+    status =
+      lastParagraph(streaming) ||
+      (pending ? `${toolInfo(pending).label} ${toolSummary(pending)}` : "") ||
+      (lastText?.kind === "text" ? lastParagraph(lastText.text) : "") ||
+      t("Thinking…");
+  }
+
+  return (
+    <div className={classes.activity} data-live={live || undefined}>
+      <UnstyledButton className={classes.activityHeader} onClick={() => setOpen((v) => !v)}>
+        {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+        {live ? <Loader size={12} type="oval" /> : <IconListDetails size={14} />}
+        {live ? (
+          <Text size="xs" c="dimmed" lineClamp={2} style={{ flex: 1 }} className={classes.activityStatus}>
+            {status}
+          </Text>
+        ) : (
+          <>
+            <Text size="xs" fw={600} c="dimmed" style={{ flexShrink: 0 }}>
+              {tn(uses.length, "{count} step", "{count} steps")}
+            </Text>
+            <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
+              {breakdown}
+            </Text>
+          </>
+        )}
+        {live && uses.length > 0 && (
+          <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+            {tn(uses.length, "{count} step", "{count} steps")}
+          </Text>
+        )}
+        {errors > 0 && (
+          <Badge size="xs" color="red" variant="light">
+            {errors > 1 ? `${t("error")} · ${errors}` : t("error")}
+          </Badge>
+        )}
+      </UnstyledButton>
+      {open && (
+        <div className={classes.activityBody}>
+          {segment(entries.map((e) => e.item)).map((seg) => {
+            if ("group" in seg) {
+              const calls = seg.group.map((g) => ({ use: g.use, index: entries[g.index]!.index }));
+              return <ToolGroup key={calls[0]!.index} calls={calls} results={results} />;
+            }
+            const { item } = seg;
+            const index = entries[seg.index]!.index;
+            if (item.kind === "text") return <Markdown key={index} text={item.text} muted />;
+            if (item.kind === "toolUse") return <ToolBlock key={index} use={item} result={results.get(item.id)} />;
+            return null;
+          })}
+          {streaming && <Markdown text={streaming} muted />}
+        </div>
+      )}
     </div>
   );
 }
@@ -123,9 +261,9 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
 }
 
 /** Assistant text rendered as GitHub-flavored Markdown. */
-function Markdown({ text }: { text: string }) {
+function Markdown({ text, muted = false }: { text: string; muted?: boolean }) {
   return (
-    <div className={`${classes.markdown} selectable`}>
+    <div className={`${classes.markdown} ${muted ? classes.markdownMuted : ""} selectable`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
     </div>
   );

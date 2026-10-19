@@ -6,7 +6,7 @@
 
 Chat with Claude, let it work in isolated git worktrees, run your dev servers, review diffs, approve what it wants to do, and merge, all from one window that feels like a JetBrains IDE.
 
-![version](https://img.shields.io/badge/version-0.6.4-blue)
+![version](https://img.shields.io/badge/version-0.6.5-blue)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![platform](https://img.shields.io/badge/macOS-tested-black?logo=apple)
 ![built with](https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20React-24C8DB?logo=tauri)
@@ -41,7 +41,9 @@ It runs **locally**, uses **your own Claude Code login** (subscription or API ke
 - **Start from zero.** Chat in a project with no repos yet: Claude works in a scratch folder, creates or clones the repos you ask for and attaches them to the project itself.
 - **Queued messages, like Claude Code.** Keep typing while Claude works: messages queue up and go out together when the turn ends. **Send now** interrupts the turn and sends them immediately, without losing the conversation.
 - **Approvals and questions.** Tool permissions arrive as cards with **Allow**, **Always allow in this session** and **Deny** (with an optional note for Claude). `AskUserQuestion` prompts appear as radio buttons or checkboxes, plus an "other answer" field. They sit at the end of the conversation and scroll with it, so long question sets never cover the chat.
-- **See what Claude used.** Skills, MCP tools, subagents and web tools are tagged in the chat and summarized in the session header. Bursts of three or more tool calls in a row collapse into one group (`Bash ×7 · Read ×2`) with running and error counts.
+- **See what Claude used.** Skills, MCP tools, subagents and web tools are tagged in the chat and summarized in the session header.
+- **Activity, then the answer.** Like claude.ai, everything Claude does in a turn (narration, commands, edits) folds into one activity block that shows its latest words in gray while it works; the final reply stands apart below it. Inside, bursts of tool calls collapse into groups (`Bash ×7 · Read ×2`).
+- **Background work, handled.** The chat shows which background commands or subagents Claude is waiting on. If Claude Code exits before they finish, ClaudeStorm resumes the turn once on its own, and **Send now** warns before stopping that work.
 - **Time and tokens.** A live line shows elapsed time and output tokens while Claude works; each finished turn shows its duration and tokens, and every chat card shows the session's running total.
 - **Read while it writes.** Scroll up and the chat stays put while new output arrives; a "Jump to latest" button (or "Claude is waiting for you") takes you back down.
 - **Search chats** from the Chats island by title, description, summary or branch.

@@ -13,7 +13,7 @@ use crate::i18n::tr;
 use crate::models::{PendingMessage, Session, SessionStatus};
 use crate::proc_tree::{self, ProcessTree};
 use crate::sessions::history::History;
-use crate::sessions::stream::{edited_file, parse_line, ChatItem};
+use crate::sessions::stream::{edited_file, parse_line, ChatItem, Parsed};
 use crate::store::Store;
 use crate::usage::service::UsageService;
 
@@ -60,6 +60,9 @@ pub struct SessionManager {
     stopping: Mutex<HashSet<String>>,
     /// Sessions interrupted by "Enviar ya": their pending messages go out as soon as they stop.
     send_now: Mutex<HashSet<String>>,
+    /// Sessions that were already resumed automatically after their background work was cut off;
+    /// cleared when the user writes, so a cut-off turn is resumed at most once per message.
+    auto_resumed: Mutex<HashSet<String>>,
     queue: Mutex<VecDeque<Queued>>,
 }
 
@@ -85,6 +88,7 @@ impl SessionManager {
     ) -> AppResult<Session> {
         let store = app.state::<Store>();
         let session = store.session(session_id)?;
+        self.auto_resumed.lock().unwrap().remove(session_id);
         let copied = copy_attachments(&attachments_dir(&store.dir(), session_id), &attachments)?;
         let names: Vec<String> = copied.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect();
         let message = PendingMessage {
@@ -224,11 +228,13 @@ impl SessionManager {
         let store = app.state::<Store>();
         let ids: Vec<String> = store.read(|d| d.sessions.iter().filter(|s| s.project_id == project_id).map(|s| s.id.clone()).collect());
         self.queue.lock().unwrap().retain(|q| !ids.contains(&q.session_id));
-        let trees: Vec<Arc<ProcessTree>> = {
+        // Only sessions with a live process are flagged: a flag on an idle session would survive and
+        // turn its next normal finish into "Stopped by the user".
+        let (live, trees): (Vec<String>, Vec<Arc<ProcessTree>>) = {
             let running = self.running.lock().unwrap();
-            ids.iter().filter_map(|id| running.get(id).cloned()).collect()
+            ids.iter().filter_map(|id| running.get(id).map(|tree| (id.clone(), tree.clone()))).unzip()
         };
-        self.stopping.lock().unwrap().extend(ids.iter().cloned());
+        self.stopping.lock().unwrap().extend(live);
         for id in &ids {
             let _ = store.update_session(id, |s| {
                 if matches!(s.status, SessionStatus::Working | SessionStatus::Queued) {
@@ -331,6 +337,8 @@ impl SessionManager {
         let mut child = cmd.spawn().map_err(|e| AppError::msg(format!("Could not start claude: {e}")))?;
         let tree = Arc::new(ProcessTree::attach(&child)?);
         self.running.lock().unwrap().insert(session_id.to_string(), tree);
+        // A new turn starts clean, even if an earlier stop left a stale flag behind.
+        self.stopping.lock().unwrap().remove(session_id);
 
         let updated = store.update_session(session_id, |s| {
             s.status = SessionStatus::Working;
@@ -388,6 +396,9 @@ impl SessionManager {
         }
         let failed = !stopped && (code != Some(0) || turn.result_ok == Some(false));
         let send_now = self.send_now.lock().unwrap().remove(id);
+        let cut_off = !stopped && !failed && turn.cut_off();
+        // Resume once on our own; queued messages resume the conversation anyway.
+        let resume = cut_off && session.pending.is_empty() && self.auto_resumed.lock().unwrap().insert(id.to_string());
         // Queued messages follow a normal finish or an "Enviar ya" interruption; after an error or
         // a plain stop they stay queued so the user decides.
         let flush = !session.pending.is_empty() && ((!stopped && !failed) || (stopped && send_now));
@@ -396,6 +407,20 @@ impl SessionManager {
             notices.push(ChatItem::Notice { level: "info".into(), text: tr("Interrupted to send your messages.", "Interrumpida para enviar tus mensajes.") });
         } else if stopped {
             notices.push(ChatItem::Notice { level: "warn".into(), text: tr("Stopped by the user.", "Detenida por el usuario.") });
+        } else if cut_off {
+            let pending = if turn.background.is_empty() { String::new() } else { format!(" ({})", turn.background.join(", ")) };
+            let next = if resume {
+                tr(" Continuing automatically.", " Continúa automáticamente.")
+            } else {
+                tr(" Write “continue” to resume.", " Escribe “continúa” para retomarlo.")
+            };
+            notices.push(ChatItem::Notice {
+                level: "warn".into(),
+                text: format!(
+                    "{}{pending}.{next}",
+                    tr("Claude Code ended before its background work finished", "Claude Code terminó antes de que acabara su trabajo en segundo plano")
+                ),
+            });
         } else if failed && turn.result_ok.is_none() {
             let detail = stderr.trim().lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
             notices.push(ChatItem::Notice {
@@ -406,6 +431,7 @@ impl SessionManager {
         self.record(app, &session, notices);
         let updated = store.update_session(id, |s| {
             s.last_activity_at = Utc::now();
+            s.background_tasks.clear();
             if turn.started {
                 s.has_conversation = true;
             }
@@ -428,6 +454,23 @@ impl SessionManager {
             };
             s.last_error = failed.then(|| stderr.trim().lines().last().unwrap_or("error").to_string());
         });
+        if resume {
+            let message = PendingMessage {
+                id: crate::models::new_id(),
+                text: tr("Continue (automatic)", "Continúa (automático)"),
+                prompt: "Your background work (shell commands, subagents or monitors) was cut off when the previous run ended, \
+                         so you never got its result. Check what actually finished, redo what did not, and complete the task."
+                    .into(),
+                model: None,
+                attachments: Vec::new(),
+                at: Utc::now(),
+            };
+            if let Ok(session) = store.session(id) {
+                if self.dispatch(app, &session, vec![message]).is_ok() {
+                    return;
+                }
+            }
+        }
         if flush {
             // Goes straight from working to working, so the UI does not announce a finished turn.
             if let Err(err) = self.flush_pending(app, id) {
@@ -469,6 +512,38 @@ struct TurnState {
     files: Vec<String>,
     last_text: Option<String>,
     result_ok: Option<bool>,
+    /// Background tasks still running according to Claude Code's last report.
+    background: Vec<String>,
+    /// A result came in and Claude has not spoken since.
+    after_result: bool,
+    /// A background task finished after the last result, but Claude never got to act on it.
+    unanswered_notification: bool,
+}
+
+impl TurnState {
+    /// Claude Code exited while background work was pending or before handling its outcome:
+    /// the turn ended "half way", with Claude still meaning to continue.
+    fn cut_off(&self) -> bool {
+        !self.background.is_empty() || self.unanswered_notification
+    }
+}
+
+/// Follows background work across a run: what is still pending and whether Claude got to react
+/// to the last task that finished.
+fn track_background(turn: &mut TurnState, parsed: &Parsed) {
+    if parsed.assistant {
+        turn.after_result = false;
+        turn.unanswered_notification = false;
+    }
+    if parsed.items.iter().any(|i| matches!(i, ChatItem::Result { .. })) {
+        turn.after_result = true;
+    }
+    if parsed.task_notified && turn.after_result {
+        turn.unanswered_notification = true;
+    }
+    if let Some(tasks) = &parsed.background {
+        turn.background = tasks.clone();
+    }
 }
 
 /// Applies one stdout line: history, live deltas, file tracking and inline usage.
@@ -492,6 +567,12 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
     }
     if let Some(output_tokens) = parsed.output_tokens {
         let _ = app.emit_to(project_window_label(&session.project_id).as_str(), SESSION_TOKENS, TokensEvent { session_id: id, output_tokens });
+    }
+    track_background(turn, &parsed);
+    if let Some(tasks) = parsed.background.clone() {
+        if let Ok(updated) = app.state::<Store>().update_session(id, |s| s.background_tasks = tasks) {
+            emit_session(app, &updated);
+        }
     }
     if !parsed.rate_windows.is_empty() {
         if let Some(account_id) = app.state::<Store>().project(&session.project_id).ok().and_then(|p| p.account_id) {
@@ -590,6 +671,47 @@ pub fn workspace_dir(app_data: &std::path::Path, project_id: &str, session_id: &
 /// Where an isolated session keeps the worktree of a repo.
 pub fn worktree_dir(app_data: &std::path::Path, session: &Session, repo_name: &str) -> PathBuf {
     app_data.join("worktrees").join(&session.project_id).join(&session.id).join(repo_name)
+}
+
+#[cfg(test)]
+mod background_tests {
+    use super::*;
+
+    const RESULT: &str = r#"{"type":"result","subtype":"success","is_error":false,"result":"waiting"}"#;
+    const SAY: &str = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"FINISHED"}]}}"#;
+    const NOTIFIED: &str = r#"{"type":"system","subtype":"task_notification","task_id":"b1","status":"completed"}"#;
+
+    fn run(lines: &[&str]) -> TurnState {
+        let mut turn = TurnState::default();
+        for line in lines {
+            track_background(&mut turn, &parse_line(line));
+        }
+        turn
+    }
+
+    /// Captured from `claude -p`: background bash, result, task done, Claude answers. Not cut off.
+    #[test]
+    fn handled_background_task_is_not_cut_off() {
+        let busy = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"b1","task_type":"local_bash","description":"Sleep"}]}"#;
+        let idle = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#;
+        assert!(!run(&[busy, RESULT, NOTIFIED, idle, SAY, RESULT]).cut_off());
+    }
+
+    /// Captured from `claude -p`: a subagent's task finishes after the result and the process
+    /// exits without letting Claude react. That turn was left half way.
+    #[test]
+    fn notification_without_reply_is_cut_off() {
+        let idle = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#;
+        assert!(run(&[RESULT, NOTIFIED, idle]).cut_off());
+    }
+
+    #[test]
+    fn exit_with_pending_tasks_is_cut_off() {
+        let busy = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"a1","task_type":"local_agent","description":"Explore"}]}"#;
+        let turn = run(&[busy, RESULT]);
+        assert!(turn.cut_off());
+        assert_eq!(turn.background, ["Explore"]);
+    }
 }
 
 #[cfg(test)]
@@ -714,6 +836,7 @@ mod e2e {
         workspace: None,
         input_tokens: 0,
         output_tokens: 0,
+        background_tasks: Vec::new(),
                 });
                 Ok(())
             })

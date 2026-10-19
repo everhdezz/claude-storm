@@ -118,6 +118,7 @@ function fixtureSession(id: string, patch: Partial<Session>): Session {
     allowedTools: [],
     inputTokens: 0,
     outputTokens: 0,
+    backgroundTasks: [],
     ...patch,
   };
 }
@@ -321,7 +322,8 @@ export function installMocks(): void {
         case "list_sessions":
           return sessions;
         case "session_history":
-          return history;
+          // A working session's last turn has no result yet: it renders as live activity.
+          return sessions.find((s) => s.id === a.sessionId)?.status === "working" ? history.filter((i) => i.kind !== "result") : history;
         case "terminal_open":
           return { id: `term-${Math.random()}`, projectId: a.projectId, cwd: a.cwd, title: String(a.cwd).split("/").pop() };
         case "session_remove_pending":

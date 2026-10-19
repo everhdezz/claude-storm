@@ -66,6 +66,45 @@
   padding: 4px 8px;
 }
 
+.markdownMuted {
+  color: var(--mantine-color-dimmed);
+}
+
+.activity {
+  min-width: 0;
+  border-left: 2px solid var(--dh-island-border);
+  padding-left: 4px;
+}
+
+.activity[data-live] {
+  border-left-color: var(--mantine-color-indigo-5);
+}
+
+.activityHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--mantine-color-dimmed);
+}
+
+.activityHeader:hover {
+  background: var(--dh-hover);
+}
+
+.activityStatus {
+  font-style: italic;
+}
+
+.activityBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 4px 4px 12px;
+}
+
 .tool {
   min-width: 0;
   border: 1px solid var(--dh-island-border);

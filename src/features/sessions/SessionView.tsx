@@ -254,10 +254,10 @@ export function SessionView() {
             <Loader size="sm" />
           </Center>
         ) : (
-          <ChatItems items={items} streaming={streaming} />
+          <ChatItems items={items} streaming={streaming} working={session.status === "working"} />
         )}
         <ApprovalPrompts session={session} />
-        {session.status === "working" && <WorkingLine since={lastPromptAt(items)} tokens={turnTokens} streaming={streaming} />}
+        {session.status === "working" && <WorkingLine since={lastPromptAt(items)} tokens={turnTokens} streaming={streaming} background={session.backgroundTasks} />}
         {session.status === "interrupted" && (
           <Text size="xs" c="yellow.4" ta="center" pb="md">
             {t("The session was interrupted. Write a message (for example “continue”) to resume it.")}
