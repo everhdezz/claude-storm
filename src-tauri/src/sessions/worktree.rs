@@ -1,9 +1,62 @@
 //! Git worktree helpers for isolated sessions.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 use crate::git::run_git;
+use crate::models::{Project, Session};
+use crate::sessions::prepare;
+
+/// Worktrees made for an isolated session: its branch, the base branch per repo and prepare notes.
+pub struct SessionWorktrees {
+    pub branch: String,
+    pub base_branches: HashMap<String, String>,
+    pub notes: Vec<String>,
+}
+
+/// Creates one worktree + branch per git repo of the session and makes each runnable.
+/// Blocking; all or nothing: a failure removes the worktrees created so far.
+pub fn create_for_session(app_data: &Path, project: &Project, session: &Session) -> AppResult<SessionWorktrees> {
+    let branch = format!("{}-{}", slugify(&session.title), &session.id[..6]);
+    // Folders without git are used as they are; only repositories get a worktree.
+    let repos: Vec<(String, String, PathBuf, PathBuf)> = project
+        .repos
+        .iter()
+        .filter(|r| session.repo_ids.contains(&r.id) && crate::git::is_repo(Path::new(&r.path)))
+        .map(|r| (r.id.clone(), r.name.clone(), PathBuf::from(&r.path), crate::sessions::manager::worktree_dir(app_data, session, &r.name)))
+        .collect();
+    let mut created: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let mut base_branches = HashMap::new();
+    for (repo_id, _, repo_path, wt) in &repos {
+        let result = current_branch(repo_path).and_then(|base| {
+            add(repo_path, wt, &branch)?;
+            Ok(base)
+        });
+        match result {
+            Ok(base) => {
+                created.push((repo_path.clone(), wt.clone()));
+                base_branches.insert(repo_id.clone(), base);
+            }
+            Err(err) => {
+                for (repo, wt) in &created {
+                    let _ = remove(repo, wt, &branch, true);
+                }
+                return Err(err);
+            }
+        }
+    }
+    // Every worktree exists now; make each one runnable (env files, cloned dependencies).
+    let notes = created.iter().zip(&repos).filter_map(|((repo, wt), (_, name, _, _))| prepare::prepare(repo, wt).summary(name)).collect();
+    Ok(SessionWorktrees { branch, base_branches, notes })
+}
+
+/// True when the worktree has no uncommitted changes and no commits beyond `base`.
+pub fn is_pristine(worktree: &Path, base: &str) -> bool {
+    let clean = run_git(worktree, &["status", "--porcelain"]).is_ok_and(|s| s.trim().is_empty());
+    let ahead = run_git(worktree, &["rev-list", "--count", &format!("{base}..HEAD")]).map(|s| s.trim().to_string());
+    clean && ahead.is_ok_and(|n| n == "0")
+}
 
 /// Converts a title into a branch-safe slug.
 pub fn slugify(title: &str) -> String {
@@ -90,6 +143,29 @@ mod tests {
     fn slugifies_spanish_titles() {
         assert_eq!(slugify("Arreglar el login de México!"), "arreglar-el-login-de-mexico");
         assert_eq!(slugify("   "), "session");
+    }
+
+    #[test]
+    fn pristine_until_changed_or_committed() {
+        let root = std::env::temp_dir().join(format!("claude-storm-pristine-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let repo = root.join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        run_git(&repo, &["init", "-q", "-b", "main"]).unwrap();
+        run_git(&repo, &["config", "user.email", "t@t"]).unwrap();
+        run_git(&repo, &["config", "user.name", "t"]).unwrap();
+        fs::write(repo.join("a.txt"), "one\n").unwrap();
+        run_git(&repo, &["add", "."]).unwrap();
+        run_git(&repo, &["commit", "-qm", "init"]).unwrap();
+
+        let wt = root.join("wt");
+        add(&repo, &wt, "pristine-test").unwrap();
+        assert!(is_pristine(&wt, "main"));
+        fs::write(wt.join("a.txt"), "two\n").unwrap();
+        assert!(!is_pristine(&wt, "main"));
+        commit(&wt, "change").unwrap();
+        assert!(!is_pristine(&wt, "main"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

@@ -12,6 +12,7 @@ import {
 } from "@tabler/icons-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isActive, processKey, stopProcess } from "../../api/processes";
+import { hasWorktree } from "../../api/sessions";
 import { FrameworkIcon } from "../../components/FrameworkIcon";
 import { notifyError } from "../../hooks/notify";
 import type { ProcessInfo, Repo, RepoCommand } from "../../types";
@@ -98,7 +99,7 @@ export function ServicesTool() {
 /** "Correr en: …" picker in the Services header: the main checkout or an isolated session's worktree. */
 export function RunTargetPicker() {
   const { sessions, runTarget, setRunTarget } = useProjectContext();
-  const candidates = sessions.filter((s) => s.mode === "isolated" && !s.archived);
+  const candidates = sessions.filter((s) => hasWorktree(s) && !s.archived);
   const target = candidates.find((s) => s.id === runTarget);
   if (candidates.length === 0) return null;
 

@@ -97,6 +97,7 @@ function fixtureSession(id: string, patch: Partial<Session>): Session {
     title: "Session",
     description: null,
     profileId: null,
+    accountId: "a1",
     model: null,
     permissionMode: "acceptEdits",
     repoIds: ["r1", "r2"],
@@ -321,6 +322,38 @@ export function installMocks(): void {
         }
         case "list_sessions":
           return sessions;
+        case "create_session": {
+          const input = a.input as unknown as { title: string; repoIds: string[] };
+          const now = new Date().toISOString();
+          const created: Session = {
+            ...sessions[sessions.length - 1]!,
+            id: `s-${Date.now()}`,
+            title: input.title,
+            repoIds: input.repoIds,
+            status: "idle",
+            summary: null,
+            filesTouched: [],
+            pending: [],
+            approvals: [],
+            createdAt: now,
+            lastActivityAt: now,
+          };
+          sessions.unshift(created);
+          emit("session-changed", created);
+          return created;
+        }
+        case "update_session": {
+          const session = sessions.find((s) => s.id === a.sessionId);
+          const patch = a.patch as unknown as { model?: string; permissionMode?: string; title?: string };
+          if (!session) return null;
+          if (patch.model !== undefined) session.model = patch.model || null;
+          if (patch.permissionMode) session.permissionMode = patch.permissionMode;
+          if (patch.title) session.title = patch.title;
+          emit("session-changed", { ...session });
+          return session;
+        }
+        case "send_session_prompt":
+          return sessions.find((s) => s.id === a.sessionId) ?? null;
         case "session_history":
           // A working session's last turn has no result yet: it renders as live activity.
           return sessions.find((s) => s.id === a.sessionId)?.status === "working" ? history.filter((i) => i.kind !== "result") : history;
@@ -333,6 +366,41 @@ export function installMocks(): void {
         case "list_processes":
         case "process_logs":
           return [];
+        case "repo_list_dir": {
+          // Every repo has the same small tree, so tabs of same-named files can be tried out.
+          const tree: Record<string, { name: string; dir: boolean }[]> = {
+            "": [{ name: "src", dir: true }, { name: "README.md", dir: false }],
+            src: [{ name: "app", dir: true }, { name: "index.ts", dir: false }],
+            "src/app": [{ name: "index.ts", dir: false }],
+          };
+          return (tree[a.path as string] ?? []).map((e) => ({ ...e, path: a.path ? `${a.path}/${e.name}` : e.name }));
+        }
+        case "search_file_names": {
+          const files = ["README.md", "src/index.ts", "src/app/index.ts", "src/app/UserController.php", "src/sessions/SessionView.tsx"];
+          const q = String(a.query).toLowerCase();
+          const ids = (a.repoIds as unknown as string[]).length ? (a.repoIds as unknown as string[]) : ["r1", "r3"];
+          return ids.flatMap((repoId) =>
+            files.flatMap((path) => {
+              const positions: number[] = [];
+              let at = 0;
+              for (const c of q) {
+                const i = path.toLowerCase().indexOf(c, at);
+                if (i < 0) return [];
+                positions.push(i);
+                at = i + 1;
+              }
+              return [{ repoId, path, positions }];
+            }),
+          );
+        }
+        case "search_in_files": {
+          const ids = (a.repoIds as unknown as string[]).length ? (a.repoIds as unknown as string[]) : ["r1", "r3"];
+          return ids.map((repoId) => ({ repoId, path: "src/index.ts", line: 2, text: `export const answer = 42; // ${a.query}` }));
+        }
+        case "repo_read_file":
+          return `// ${a.path}\nexport const answer = 42;\n`;
+        case "repo_write_file":
+          return null;
         case "wiki_tree":
           return wikiTree();
         case "wiki_root":

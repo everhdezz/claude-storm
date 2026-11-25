@@ -49,7 +49,10 @@ export interface Projection {
   parentId: string | null;
 }
 
-/** Computes the target depth from the horizontal drag offset and the neighbours at the drop position. */
+/**
+ * Computes the target depth at the drop position: it follows the neighbours (between a group's repos
+ * it stays in the group), and dragging half an indent left or right overrides that.
+ */
 export function project(items: FlatItem[], activeId: string, overId: string, offsetX: number): Projection {
   const activeIndex = items.findIndex((i) => i.id === activeId);
   const overIndex = items.findIndex((i) => i.id === overId);
@@ -58,12 +61,22 @@ export function project(items: FlatItem[], activeId: string, overId: string, off
   const moved = arrayMove(items, activeIndex, overIndex);
   const prev = moved[overIndex - 1];
   const next = moved[overIndex + 1];
-  const wanted = active.depth + Math.round(offsetX / INDENT);
+  const byNeighbours = prev && (prev.kind === "group" ? !prev.collapsed : prev.depth === 1) ? 1 : 0;
+  const wanted = offsetX <= -INDENT / 2 ? 0 : offsetX >= INDENT / 2 ? 1 : byNeighbours;
   const maxDepth = prev && (prev.kind === "group" || prev.depth === 1) ? 1 : 0;
   const minDepth = next && next.depth === 1 && next.parentId !== null ? 1 : 0;
   const depth = Math.min(maxDepth, Math.max(minDepth, wanted)) as 0 | 1;
   if (depth === 0 || !prev) return { depth: 0, parentId: null };
   return { depth: 1, parentId: prev.kind === "group" ? prev.id : prev.parentId };
+}
+
+/** Share of a group row's height, from the top and from the bottom, that still means "drop next to it". */
+const EDGE = 0.22;
+
+/** Whether a repo dragged with its centre at `centerY` over the group row `rect` goes into the group. */
+export function dropsIntoGroup(rect: { top: number; height: number }, centerY: number): boolean {
+  const ratio = (centerY - rect.top) / rect.height;
+  return ratio > EDGE && ratio < 1 - EDGE;
 }
 
 /** Applies a finished drag and rebuilds the layout, keeping hidden children inside their groups. */

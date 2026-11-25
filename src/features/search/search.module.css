@@ -1,0 +1,70 @@
+.head {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--dh-border, rgba(255, 255, 255, 0.08));
+}
+
+.toggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--mantine-color-gray-5);
+}
+
+.toggle[data-on] {
+  background: var(--mantine-color-indigo-7);
+  color: white;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 14px;
+  font-size: var(--mantine-font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.row[data-selected] {
+  background: var(--mantine-color-indigo-9);
+}
+
+.name {
+  flex-shrink: 0;
+  color: var(--mantine-color-gray-1);
+}
+
+.name b,
+.where b {
+  color: var(--mantine-color-orange-4);
+  font-weight: 700;
+}
+
+.code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  color: var(--mantine-color-gray-3);
+}
+
+.code mark {
+  background: rgba(250, 176, 5, 0.35);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.where {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--mantine-color-dimmed);
+}

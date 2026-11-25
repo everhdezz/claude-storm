@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { clearDraft } from "./drafts";
 import { ActionIcon, Group, Loader, Menu, Radio, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconArchiveOff, IconCopy, IconDots, IconPencil, IconPlayerStop, IconTrash } from "@tabler/icons-react";
-import { useNavigate, useParams } from "react-router";
-import { archiveSession, deleteSession, duplicateSession, isBusy, stopSession, updateSession } from "../../api/sessions";
+import { useNavigate } from "react-router";
+import { archiveSession, deleteSession, duplicateSession, hasWorktree, isBusy, stopSession, updateSession } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import type { Session, WorktreeCleanup } from "../../types";
 import { relativeTime } from "../../utils/time";
@@ -15,9 +16,8 @@ import { t, tn } from "../../i18n";
 
 /** Card of one session in the Chats tool window. */
 export function SessionCard({ session, selected }: { session: Session; selected: boolean }) {
-  const { project, showChat } = useProjectContext();
+  const { project, openChat, closeChat } = useProjectContext();
   const navigate = useNavigate();
-  const { sessionId } = useParams();
   const [editing, setEditing] = useState(false);
 
   async function rename(title: string) {
@@ -35,8 +35,7 @@ export function SessionCard({ session, selected }: { session: Session; selected:
   }
 
   function leaveIfSelected() {
-    // Compared with the URL, not `selected`: the chat may be open behind the wiki or the code editor.
-    if (sessionId === session.id) navigate(`/project/${project.id}`);
+    closeChat(session.id);
   }
 
   function archive() {
@@ -51,7 +50,10 @@ export function SessionCard({ session, selected }: { session: Session; selected:
 
   function remove() {
     askCleanup(session, t("Delete session"), t("Delete"), true, (cleanup) => {
-      deleteSession(session.id, cleanup).then(leaveIfSelected).catch((e) => notifyError(e));
+      deleteSession(session.id, cleanup).then(() => {
+        clearDraft(`${session.projectId}:${session.id}`);
+        leaveIfSelected();
+      }).catch((e) => notifyError(e));
     });
   }
 
@@ -60,9 +62,7 @@ export function SessionCard({ session, selected }: { session: Session; selected:
       className={classes.card}
       data-selected={selected || undefined}
       onClick={() => {
-        navigate(`/project/${project.id}/session/${session.id}`);
-        // Clicking the chat already in the URL changes no route, so the main area is switched here too.
-        showChat();
+        openChat(session.id);
       }}
     >
       <Group justify="space-between" wrap="nowrap" gap={6} align="flex-start">
@@ -164,7 +164,7 @@ function askCleanup(session: Session, title: string, confirmLabel: string, destr
     title,
     centered: true,
     children:
-      session.mode === "isolated" ? (
+      hasWorktree(session) ? (
         <Stack gap="xs">
           <Text size="sm">{t("What should happen to the worktree and the branch {branch}?", { branch: session.branch ?? "" })}</Text>
           <Radio.Group defaultValue={choice} onChange={(v) => (choice = v as WorktreeCleanup)}>

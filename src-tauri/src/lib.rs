@@ -4,6 +4,7 @@ mod detect;
 mod error;
 mod git;
 mod i18n;
+mod keep_awake;
 mod login;
 mod mcp;
 mod models;
@@ -11,6 +12,7 @@ mod proc_tree;
 mod process_manager;
 mod profiles;
 mod pty;
+mod search;
 mod sessions;
 mod shell_env;
 mod store;
@@ -38,6 +40,8 @@ pub fn run() {
         .manage(TerminalManager::default())
         .manage(UsageService::default())
         .manage(SessionManager::default())
+        .manage(keep_awake::KeepAwake::default())
+        .manage(std::sync::Arc::new(search::FileLists::default()))
         .manage(LoginManager::default())
         .manage(mcp::McpState::default())
         .setup(|app| {
@@ -146,6 +150,11 @@ pub fn run() {
             commands::sessions::update_session,
             commands::sessions::duplicate_session,
             commands::sessions::archive_session,
+            commands::sessions::archive_idle_sessions,
+            commands::keep_awake::keep_awake_state,
+            commands::files::search_file_names,
+            commands::files::search_in_files,
+            commands::keep_awake::set_keep_awake,
             commands::sessions::delete_session,
             commands::sessions::session_diff,
             commands::sessions::session_folders,
@@ -188,6 +197,7 @@ pub fn run() {
             handle.state::<ProcessManager>().kill_all_blocking();
             handle.state::<TerminalManager>().close_all();
             handle.state::<SessionManager>().kill_all();
+            handle.state::<keep_awake::KeepAwake>().stop();
             handle.state::<LoginManager>().cancel_all();
         }
     });

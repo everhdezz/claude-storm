@@ -10,7 +10,7 @@ use crate::models::{new_id, PendingMessage, Project, Session, SessionMode, Sessi
 use crate::sessions::history::History;
 use crate::sessions::manager::{emit_session, working_dir, SessionManager};
 use crate::sessions::stream::ChatItem;
-use crate::sessions::{prepare, worktree};
+use crate::sessions::worktree;
 use crate::store::Store;
 
 /// Fields of the "new session" form.
@@ -23,6 +23,9 @@ pub struct NewSession {
     pub model: Option<String>,
     pub permission_mode: Option<String>,
     pub mode: SessionMode,
+    /// Claude account of the chat; the project's when missing. It cannot change afterwards.
+    #[serde(default)]
+    pub account_id: Option<String>,
 }
 
 /// Editable fields of an existing session.
@@ -89,6 +92,12 @@ fn with_worktree(session: &Session, repos: Vec<(String, String, PathBuf, PathBuf
 #[tauri::command]
 pub fn list_sessions(store: State<Store>, project_id: String) -> Vec<Session> {
     let mut list: Vec<Session> = store.read(|d| d.sessions.iter().filter(|s| s.project_id == project_id).cloned().collect());
+    // Chats from before accounts were per chat keep the account they were last used with.
+    for session in list.iter_mut().filter(|s| s.account_id.is_none()) {
+        if let Ok(pinned) = crate::sessions::manager::pin_account(&store, session) {
+            *session = pinned;
+        }
+    }
     list.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
     list
 }
@@ -101,6 +110,11 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
     if title.is_empty() {
         return Err(AppError::msg("Session title cannot be empty"));
     }
+    let account_id = match input.account_id.filter(|id| !id.trim().is_empty()) {
+        Some(id) if store.read(|d| d.accounts.iter().any(|a| a.id == id)) => id,
+        Some(_) => return Err(AppError::msg("That Claude account no longer exists. Pick another one.")),
+        None => crate::sessions::manager::project_account(&store, &project_id)?.id,
+    };
     let repo_ids: Vec<String> = input.repo_ids.into_iter().filter(|id| project.repos.iter().any(|r| &r.id == id)).collect();
     let now = Utc::now();
     let id = new_id();
@@ -120,6 +134,7 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         title: title.clone(),
         description: input.description.filter(|d| !d.trim().is_empty()),
         profile_id: None,
+        account_id: Some(account_id),
         model: input.model.filter(|m| !m.trim().is_empty()),
         permission_mode: input.permission_mode.unwrap_or_else(|| "acceptEdits".into()),
         repo_ids,
@@ -145,54 +160,19 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
         background_tasks: Vec::new(),
     };
 
-    if session.mode == SessionMode::Isolated {
-        let branch = format!("{}-{}", worktree::slugify(&title), &id[..6]);
-        // Folders without git are used as they are; only repositories get a worktree.
-        let app_data = store.dir();
-        let repos: Vec<(String, String, PathBuf, PathBuf)> = project
-            .repos
-            .iter()
-            .filter(|r| session.repo_ids.contains(&r.id) && crate::git::is_repo(Path::new(&r.path)))
-            .map(|r| (r.id.clone(), r.name.clone(), PathBuf::from(&r.path), crate::sessions::manager::worktree_dir(&app_data, &session, &r.name)))
-            .collect();
-        let branch_for_task = branch.clone();
-        let (bases, notes) = tauri::async_runtime::spawn_blocking(move || -> AppResult<(Vec<(String, String)>, Vec<String>)> {
-            let mut created: Vec<(PathBuf, PathBuf)> = Vec::new();
-            let mut bases = Vec::new();
-            for (repo_id, _, repo_path, wt) in &repos {
-                let result = worktree::current_branch(repo_path).and_then(|base| {
-                    worktree::add(repo_path, wt, &branch_for_task)?;
-                    Ok(base)
-                });
-                match result {
-                    Ok(base) => {
-                        created.push((repo_path.clone(), wt.clone()));
-                        bases.push((repo_id.clone(), base));
-                    }
-                    Err(err) => {
-                        for (repo, wt) in &created {
-                            let _ = worktree::remove(repo, wt, &branch_for_task, true);
-                        }
-                        return Err(err);
-                    }
-                }
-            }
-            // Every worktree exists now; make each one runnable (env files, cloned dependencies).
-            let notes = created
-                .iter()
-                .zip(&repos)
-                .filter_map(|((repo, wt), (_, name, _, _))| prepare::prepare(repo, wt).summary(name))
-                .collect();
-            Ok((bases, notes))
-        })
-        .await
-        .map_err(|e| AppError::msg(e.to_string()))??;
-        if !notes.is_empty() {
-            let text = format!("{}\n{}", tr("Worktree ready.", "Worktree preparado."), notes.join("\n"));
+    // The worktrees wait for the first turn that may edit (see SessionManager::start), so chats that
+    // only plan or ask never get one. Unless Claude Code could not resume the conversation there.
+    if session.mode == SessionMode::Isolated && !can_defer_worktree(&store.dir(), &project, &session) {
+        let (app_data, project, snapshot) = (store.dir(), project.clone(), session.clone());
+        let made = tauri::async_runtime::spawn_blocking(move || worktree::create_for_session(&app_data, &project, &snapshot))
+            .await
+            .map_err(|e| AppError::msg(e.to_string()))??;
+        if !made.notes.is_empty() {
+            let text = format!("{}\n{}", tr("Worktree ready.", "Worktree preparado."), made.notes.join("\n"));
             let _ = History::new(&store.dir()).append(&id, &[ChatItem::Notice { level: "info".into(), text }]);
         }
-        session.branch = Some(branch);
-        session.base_branches = bases.into_iter().collect();
+        session.branch = Some(made.branch);
+        session.base_branches = made.base_branches;
     }
 
     let created = session.clone();
@@ -202,6 +182,15 @@ pub async fn create_session(app: AppHandle, store: State<'_, Store>, project_id:
     })?;
     emit_session(&app, &created);
     Ok(created)
+}
+
+/// Whether the session's worktrees can be created later, moving its Claude conversation along: the
+/// worktree that becomes the cwd must map to a transcript folder name we can predict.
+fn can_defer_worktree(app_data: &Path, project: &Project, session: &Session) -> bool {
+    let Some(first) = session.repo_ids.first().and_then(|id| project.repos.iter().find(|r| &r.id == id)) else { return true };
+    let app_data = std::fs::canonicalize(app_data).unwrap_or_else(|_| app_data.to_path_buf());
+    let cwd = crate::sessions::manager::worktree_dir(&app_data, session, &first.name);
+    crate::sessions::transcript::project_folder_name(&cwd).is_some()
 }
 
 /// Returns the stored conversation of a session.
@@ -322,6 +311,46 @@ pub async fn archive_session(
     })?;
     emit_session(&app, &updated);
     Ok(updated)
+}
+
+/// Archives every session of the project that is not running, queued or waiting for an answer.
+/// Worktrees without changes or commits of their own are removed with their branch (nothing is
+/// lost); the others are kept. Returns how many sessions were archived.
+#[tauri::command]
+pub async fn archive_idle_sessions(app: AppHandle, store: State<'_, Store>, manager: State<'_, SessionManager>, project_id: String) -> AppResult<usize> {
+    let project = store.project(&project_id)?;
+    let idle: Vec<Session> = store.read(|d| {
+        d.sessions
+            .iter()
+            .filter(|s| s.project_id == project_id && !s.archived && s.approvals.is_empty())
+            .filter(|s| !matches!(s.status, SessionStatus::Working | SessionStatus::Queued) && !manager.is_running(&s.id))
+            .cloned()
+            .collect()
+    });
+    for session in &idle {
+        let repos = with_worktree(session, session_repos(&store, session, &project));
+        let mut removed = false;
+        if session.mode == SessionMode::Isolated && !repos.is_empty() {
+            let (branch, bases) = (session.branch.clone().unwrap_or_default(), session.base_branches.clone());
+            removed = tauri::async_runtime::spawn_blocking(move || {
+                let pristine = repos.iter().all(|(id, _, _, wt)| bases.get(id).is_some_and(|base| worktree::is_pristine(wt, base)));
+                pristine && repos.iter().all(|(_, _, repo, wt)| worktree::remove(repo, wt, &branch, true).is_ok())
+            })
+            .await
+            .unwrap_or(false);
+        }
+        if let Ok(updated) = store.update_session(&session.id, |s| {
+            s.archived = true;
+            // Back to "no worktree yet": if the chat is picked up again, its next editing turn makes a new one.
+            if removed {
+                s.branch = None;
+                s.base_branches.clear();
+            }
+        }) {
+            emit_session(&app, &updated);
+        }
+    }
+    Ok(idle.len())
 }
 
 /// Deletes a session, its history and (optionally) its worktrees.

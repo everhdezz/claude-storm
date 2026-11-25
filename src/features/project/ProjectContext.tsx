@@ -3,8 +3,8 @@ import type { AppSettings, ClaudeAccount, ProcessInfo, Project, Session } from "
 import type { SettingsSection } from "../settings/SettingsModal";
 import type { ProjectUiState } from "./useUiState";
 import type { GitStatusMap } from "./useGitStatuses";
-import type { CodeFile } from "../code/CodeView";
-import type { MainView } from "./useLayoutPrefs";
+import type { Wiki } from "../wiki/useWiki";
+import type { MainTab } from "./useMainTabs";
 
 export interface ProjectContextValue {
   project: Project;
@@ -21,15 +21,18 @@ export interface ProjectContextValue {
   selectService: (processId: string) => void;
   revealService: (processId: string) => void;
   openTerminalAt: (cwd: string) => void;
-  /** What the main area shows; only that view's item is highlighted in the left tools. */
-  mainView: MainView;
-  /** Brings the chat back over the wiki and puts the cursor in its composer. */
-  showChat: () => void;
-  /** Opens a repo file in the code editor and switches the main area to it. */
-  openFile: (repoId: string, path: string) => void;
-  /** File shown in the code editor, highlighted in the Projects tree. */
-  activeFile: CodeFile | null;
-  setActiveFile: (file: CodeFile | null) => void;
+  /** Tab shown in the main area (a chat, a wiki page or a file); its item is highlighted in the left tools. */
+  activeTab: MainTab | null;
+  /** Opens a chat in a tab (null: the "new chat" home) and puts the cursor in its composer. */
+  openChat: (sessionId: string | null) => void;
+  /** Closes the tab of a chat (archived or deleted). */
+  closeChat: (sessionId: string) => void;
+  /** Opens a repo file in a code tab, optionally at a line. */
+  openFile: (repoId: string, path: string, line?: number) => void;
+  /** Opens a wiki page in a tab. */
+  openWikiPage: (path: string) => void;
+  /** The wiki tree and its operations. */
+  wiki: Wiki;
   /** Isolated session whose worktree the services run in; null runs them in the main checkout. */
   runTarget: string | null;
   setRunTarget: (sessionId: string | null) => void;

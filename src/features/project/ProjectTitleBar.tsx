@@ -5,6 +5,7 @@ import { focusWelcomeWindow, listProjects, openProjectWindow } from "../../api/p
 import { notifyError } from "../../hooks/notify";
 import type { ProjectSummary } from "../../types";
 import { ProjectAvatar } from "../welcome/ProjectAvatar";
+import { KeepAwakeButton } from "./KeepAwakeButton";
 import classes from "./titlebar.module.css";
 import { t } from "../../i18n";
 
@@ -16,9 +17,10 @@ interface ProjectTitleBarProps {
   projectName: string;
   color: string | null;
   onSettings: () => void;
+  onSearch: () => void;
 }
 
-export function ProjectTitleBar({ projectId, projectName, color, onSettings }: ProjectTitleBarProps) {
+export function ProjectTitleBar({ projectId, projectName, color, onSettings, onSearch }: ProjectTitleBarProps) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -122,6 +124,12 @@ export function ProjectTitleBar({ projectId, projectName, color, onSettings }: P
         </Menu.Dropdown>
       </Menu>
       <div style={{ flex: 1 }} data-tauri-drag-region />
+      <Tooltip label={t("Search everywhere (double ⇧ · ⌘⇧F for text)")}>
+        <ActionIcon variant="subtle" color="gray" onClick={onSearch} aria-label={t("Search everywhere")}>
+          <IconSearch size={18} stroke={1.6} />
+        </ActionIcon>
+      </Tooltip>
+      <KeepAwakeButton />
       <Tooltip label={t("Settings")}>
         <ActionIcon variant="subtle" color="gray" onClick={onSettings} aria-label={t("Settings")}>
           <IconSettings size={18} stroke={1.6} />

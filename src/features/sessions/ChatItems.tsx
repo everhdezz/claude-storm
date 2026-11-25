@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { Badge, Group, Loader, Paper, Text, UnstyledButton } from "@mantine/core";
 import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile, IconListDetails, IconStack2 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
+import { CopyablePre } from "./CopyablePre";
 import remarkGfm from "remark-gfm";
 import { modelLabel } from "../../api/sessions";
 import type { ChatItem } from "../../types";
@@ -15,6 +16,7 @@ import { t, tn } from "../../i18n";
 
 type ToolUse = Extract<ChatItem, { kind: "toolUse" }>;
 type ToolResult = Extract<ChatItem, { kind: "toolResult" }>;
+type Result = Extract<ChatItem, { kind: "result" }>;
 
 /** Runs of this many back-to-back tool calls collapse into one group. */
 const GROUP_MIN = 3;
@@ -108,6 +110,7 @@ export function ChatItems({ items, streaming, working = false }: { items: ChatIt
             {/* Before the first tool call a reply streams as plain text, as in any chat. */}
             {turn.activity.length === 0 && liveStream && <Markdown text={liveStream} />}
             {turn.trailer.map(({ item, index }) => renderTrailer(item, index))}
+            {!turn.live && <TurnTotal turn={turn} />}
           </Fragment>
         );
       })}
@@ -116,7 +119,32 @@ export function ChatItems({ items, streaming, working = false }: { items: ChatIt
   );
 }
 
-/** Notices and the end-of-turn line. */
+/**
+ * One stats line per turn, even when Claude stopped and picked up again (background work, automatic
+ * resumes): the time runs from the prompt to the last result, and tokens add up.
+ */
+function TurnTotal({ turn }: { turn: Turn }) {
+  const results = turn.trailer.flatMap((e) => (e.item.kind === "result" ? [e.item] : []));
+  const last = results[results.length - 1];
+  if (!last) return null;
+  const sum = (pick: (r: Result) => number | null | undefined) =>
+    results.some((r) => pick(r) != null) ? results.reduce((n, r) => n + (pick(r) ?? 0), 0) : null;
+  const startedAt = turn.prompt?.item.kind === "prompt" ? Date.parse(turn.prompt.item.at) : NaN;
+  const endedAt = last.at ? Date.parse(last.at) : NaN;
+  // Older results have no time of their own: their durations are added instead.
+  const durationMs = Number.isFinite(startedAt) && Number.isFinite(endedAt) ? endedAt - startedAt : sum((r) => r.durationMs);
+  const total: Result = {
+    ...last,
+    durationMs,
+    turns: sum((r) => r.turns),
+    costUsd: sum((r) => r.costUsd),
+    inputTokens: sum((r) => r.inputTokens),
+    outputTokens: sum((r) => r.outputTokens),
+  };
+  return <ResultStats item={total} />;
+}
+
+/** Notices and errors at the end of a turn. */
 function renderTrailer(item: ChatItem, index: number) {
   if (item.kind === "result") {
     return (
@@ -126,7 +154,6 @@ function renderTrailer(item: ChatItem, index: number) {
             {item.text ? t("Claude ended with an error: {text}", { text: item.text }) : t("Claude ended with an error")}
           </Text>
         )}
-        <ResultStats item={item} />
       </div>
     );
   }
@@ -168,8 +195,6 @@ function Activity({ entries, results, live, streaming }: { entries: Entry[]; res
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
   const breakdown = [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(" · ");
-  const errors = uses.filter((u) => results.get(u.id)?.isError).length;
-
   let status = "";
   if (live) {
     const lastEntry = entries[entries.length - 1]?.item;
@@ -206,11 +231,7 @@ function Activity({ entries, results, live, streaming }: { entries: Entry[]; res
             {tn(uses.length, "{count} step", "{count} steps")}
           </Text>
         )}
-        {errors > 0 && (
-          <Badge size="xs" color="red" variant="light">
-            {errors > 1 ? `${t("error")} · ${errors}` : t("error")}
-          </Badge>
-        )}
+        {!live && <LastStepBadge uses={uses} results={results} />}
       </UnstyledButton>
       {open && (
         <div className={classes.activityBody}>
@@ -260,11 +281,15 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
   );
 }
 
-/** Assistant text rendered as GitHub-flavored Markdown. */
+const MARKDOWN_COMPONENTS = { pre: CopyablePre };
+
+/** Assistant text rendered as GitHub-flavored Markdown; code blocks get a copy button. */
 function Markdown({ text, muted = false }: { text: string; muted?: boolean }) {
   return (
     <div className={`${classes.markdown} ${muted ? classes.markdownMuted : ""} selectable`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -301,13 +326,32 @@ function ToolBlock({ use, result }: { use: ToolUse; result: ToolResult | undefin
       </UnstyledButton>
       {open && (
         <div className={classes.toolBody}>
-          {isEdit ? <EditPreview use={use} /> : <pre className={`${classes.code} selectable`}>{JSON.stringify(use.input, null, 2)}</pre>}
-          {result && !isEdit && <pre className={`${classes.code} ${classes.output} selectable`}>{result.content || t("(no output)")}</pre>}
+          {isEdit ? <EditPreview use={use} /> : <CopyablePre className={`${classes.code} selectable`}>{JSON.stringify(use.input, null, 2)}</CopyablePre>}
+          {result && !isEdit && <CopyablePre className={`${classes.code} ${classes.output} selectable`}>{result.content || t("(no output)")}</CopyablePre>}
           {result?.isError && isEdit && <pre className={`${classes.code} ${classes.output}`}>{result.content}</pre>}
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * State of the last call of a group: an error Claude already got past does not keep the whole
+ * group red; what shows is how the latest step went (running, error, or nothing when it worked).
+ */
+function LastStepBadge({ uses, results }: { uses: ToolUse[]; results: Map<string, ToolResult> }) {
+  const last = uses[uses.length - 1];
+  if (!last) return null;
+  const result = results.get(last.id);
+  if (!result) return <Badge size="xs" variant="light">{t("running")}</Badge>;
+  if (result.isError) {
+    return (
+      <Badge size="xs" color="red" variant="light">
+        {t("error")}
+      </Badge>
+    );
+  }
+  return null;
 }
 
 /** Collapsed run of back-to-back tool calls, e.g. a burst of Bash commands. */
@@ -319,8 +363,6 @@ function ToolGroup({ calls, results }: { calls: { use: ToolUse; index: number }[
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
   const breakdown = [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(" · ");
-  const running = calls.filter(({ use }) => !results.has(use.id)).length;
-  const errors = calls.filter(({ use }) => results.get(use.id)?.isError).length;
   return (
     <div className={classes.tool}>
       <UnstyledButton className={classes.toolHeader} onClick={() => setOpen((v) => !v)}>
@@ -332,16 +374,7 @@ function ToolGroup({ calls, results }: { calls: { use: ToolUse; index: number }[
         <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
           {breakdown}
         </Text>
-        {running > 0 && (
-          <Badge size="xs" variant="light">
-            {running > 1 ? `${t("running")} · ${running}` : t("running")}
-          </Badge>
-        )}
-        {errors > 0 && (
-          <Badge size="xs" color="red" variant="light">
-            {errors > 1 ? `${t("error")} · ${errors}` : t("error")}
-          </Badge>
-        )}
+        <LastStepBadge uses={calls.map((c) => c.use)} results={results} />
       </UnstyledButton>
       {open && (
         <div className={`${classes.toolBody} ${classes.toolGroupBody}`}>

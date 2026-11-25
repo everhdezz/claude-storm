@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ActionIcon, Badge, Button, Center, Group, Loader, Menu, ScrollArea, Text, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconArrowDown, IconDots, IconFileDiff, IconGitBranch, IconGitCommit, IconGitMerge, IconTrash } from "@tabler/icons-react";
+import { IconArrowDown, IconDots, IconEye, IconFileDiff, IconGitBranch, IconGitCommit, IconGitMerge, IconTrash } from "@tabler/icons-react";
 import { useNavigate, useParams } from "react-router";
 import {
+  hasWorktree,
   isBusy,
   updateSession,
   sessionModelLabel,
@@ -101,7 +102,11 @@ export function SessionView() {
   }
 
   const repoNames = session.repoIds.map((id) => project.repos.find((r) => r.id === id)?.name).filter(Boolean);
-  const isolated = session.mode === "isolated";
+  const isolated = hasWorktree(session);
+  const awaitingWorktree = session.mode === "isolated" && !isolated;
+  const consult = session.mode === "consult";
+  // Chats from before accounts were per chat have none until their first message: the project's then.
+  const chatAccount = session.accountId ? (settings.accounts.find((a) => a.id === session.accountId) ?? null) : account;
 
   async function send(prompt: string, model: string | null, attachments: string[]) {
     const conflicts = isBusy(session!) ? [] : conflictingSessions(session!, sessions);
@@ -111,12 +116,14 @@ export function SessionView() {
         t("{sessions} is editing those repos right now. Changes may overwrite each other.", { sessions: conflicts.map((s) => `«${s.title}»`).join(", ") }),
         t("Send anyway"),
       );
-      if (!ok) return;
+      if (!ok) return false;
     }
     try {
       await sendSessionPrompt(session!.id, prompt, model, attachments);
+      return true;
     } catch (err) {
       notifyError(err, t("Could not send"));
+      return false;
     }
   }
 
@@ -188,7 +195,7 @@ export function SessionView() {
           <Group gap={6} mt={2} wrap="nowrap">
             <Tooltip label={t("Model")}>
               <Badge size="xs" variant="default">
-                {sessionModelLabel(session, account, settings)}
+                {sessionModelLabel(session, chatAccount, settings)}
               </Badge>
             </Tooltip>
             {repoNames.map((n) => (
@@ -204,6 +211,30 @@ export function SessionView() {
                   {session.branch}
                 </Text>
               </Group>
+            )}
+            {consult && (
+              <Tooltip
+                multiline
+                w={320}
+                label={t("Consult mode: Claude only reads and answers. When you ask for changes it proposes them, and before editing it checks for other work in these repos; if there is any, it asks whether to create a worktree or work in the same folder and branch.")}
+              >
+                <Group gap={4} wrap="nowrap">
+                  <IconEye size={12} />
+                  <Text size="xs" c="dimmed" truncate>
+                    {t("consult mode")}
+                  </Text>
+                </Group>
+              </Tooltip>
+            )}
+            {awaitingWorktree && (
+              <Tooltip label={t("Isolated session: its worktree and branch are created when Claude starts working. While it only plans, it reads the main checkout.")}>
+                <Group gap={4} wrap="nowrap">
+                  <IconGitBranch size={12} />
+                  <Text size="xs" c="dimmed" truncate>
+                    {t("worktree on first edit")}
+                  </Text>
+                </Group>
+              </Tooltip>
             )}
           </Group>
         </div>
@@ -286,11 +317,14 @@ export function SessionView() {
         <PendingQueue session={session} onEdit={(text) => setInjected((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }))} />
         <Composer
           key={session.id}
+          draftKey={`${project.id}:${session.id}`}
+          lockedAccount={chatAccount}
           injected={injected}
           placeholder={
             isBusy(session) ? t("Write your next message; it is queued and sent when Claude finishes…") : t("Continue the conversation…")
           }
-          defaultModel={session.model}
+          model={session.model}
+          onModelChange={(model) => updateSession(session.id, { model: model ?? "" }).catch((err) => notifyError(err))}
           permissionMode={session.permissionMode}
           onPermissionModeChange={(mode) => updateSession(session.id, { permissionMode: mode }).catch((err) => notifyError(err))}
           busy={isBusy(session)}

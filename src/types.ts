@@ -169,7 +169,8 @@ export interface LogEvent {
 }
 
 export type SessionStatus = "idle" | "queued" | "working" | "waiting" | "done" | "error" | "interrupted";
-export type SessionMode = "direct" | "isolated";
+/** "consult": read-only until Claude is asked to change code; then it becomes direct or isolated. */
+export type SessionMode = "direct" | "isolated" | "consult";
 
 export interface Session {
   id: string;
@@ -177,6 +178,8 @@ export interface Session {
   title: string;
   description: string | null;
   profileId: string | null;
+  /** Claude account the chat runs with, fixed at creation; null only for chats from before 0.6.6. */
+  accountId: string | null;
   model: string | null;
   permissionMode: string;
   repoIds: string[];
@@ -237,7 +240,7 @@ export type ChatItem =
   | { kind: "text"; text: string }
   | { kind: "toolUse"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "toolResult"; toolUseId: string; content: string; isError: boolean }
-  | { kind: "result"; ok: boolean; text: string; costUsd: number | null; durationMs: number | null; turns: number | null; inputTokens?: number | null; outputTokens?: number | null }
+  | { kind: "result"; ok: boolean; text: string; costUsd: number | null; durationMs: number | null; turns: number | null; inputTokens?: number | null; outputTokens?: number | null; at?: string | null }
   | { kind: "notice"; level: "info" | "warn" | "error"; text: string };
 
 export interface NewSessionInput {
@@ -247,6 +250,8 @@ export interface NewSessionInput {
   model?: string | null;
   permissionMode?: string;
   mode: SessionMode;
+  /** The project's account when null. */
+  accountId?: string | null;
 }
 
 export interface RepoDiff {

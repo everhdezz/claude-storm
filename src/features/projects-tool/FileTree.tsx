@@ -12,7 +12,7 @@ const INDENT = 14;
 
 /** Files of an expanded repo; folders load when they are opened, files open in the code editor. */
 export function FileTree({ repo }: { repo: Repo }) {
-  const { project, openFile, activeFile, mainView } = useProjectContext();
+  const { project, openFile, activeTab } = useProjectContext();
   const [entries, setEntries] = useState<Record<string, FileEntry[] | "error">>({});
   const [expanded, setExpanded] = useState<string[]>([]);
 
@@ -63,7 +63,7 @@ export function FileTree({ repo }: { repo: Repo }) {
     }
     return list.map((entry) => {
       const open = expanded.includes(entry.path);
-      const selected = mainView === "code" && !entry.dir && activeFile?.repoId === repo.id && activeFile.path === entry.path;
+      const selected = activeTab?.kind === "code" && !entry.dir && activeTab.repoId === repo.id && activeTab.path === entry.path;
       return (
         <div key={entry.path}>
           <div

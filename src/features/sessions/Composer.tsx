@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ActionIcon, CloseButton, Group, Loader, Menu, Text, Textarea, Tooltip, UnstyledButton } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
+import { ActionIcon, CloseButton, Group, Loader, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import {
   IconArrowUp,
   IconCheck,
@@ -7,65 +7,97 @@ import {
   IconCpu,
   IconFile,
   IconFileUpload,
+  IconLock,
   IconPaperclip,
   IconPhoto,
   IconPlayerStopFilled,
   IconPlayerTrackNextFilled,
 } from "@tabler/icons-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useForm } from "react-hook-form";
 import { modelLabel, PERMISSION_OPTIONS, savePastedFile } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import { modelOptions } from "../../api/settings";
+import type { ClaudeAccount } from "../../types";
 import { useProjectContext } from "../project/ProjectContext";
 import { AccountLink } from "../settings/AccountLink";
 import classes from "./sessions.module.css";
 import { useFileDrop } from "./useFileDrop";
+import { loadDraft, saveDraft } from "./drafts";
+import { MarkdownInput, type MarkdownInputHandle } from "./MarkdownInput";
 import { t } from "../../i18n";
 
 interface ComposerProps {
   placeholder: string;
-  defaultModel: string | null;
+  /** Where the unsent text and attachments are kept while the user is elsewhere. */
+  draftKey: string;
+  /** Model picked for the chat (null: the account/app default); it stays until changed, like `/model`. */
+  model: string | null;
+  onModelChange: (model: string | null) => void;
   /** Claude Code permission mode; shown next to the model and cycled with Shift+Tab. */
   permissionMode: string;
   onPermissionModeChange: (mode: string) => void;
+  /**
+   * The chat's own Claude account, fixed once the chat exists (null: it no longer exists). Left
+   * undefined for a new chat, which takes the project's account and lets the user change it.
+   */
+  lockedAccount?: ClaudeAccount | null;
   busy?: boolean;
   autoFocus?: boolean;
-  onSend: (prompt: string, model: string | null, attachments: string[]) => Promise<void>;
+  /** Resolves false when nothing was sent, so the text stays in the box. */
+  onSend: (prompt: string, model: string | null, attachments: string[]) => Promise<boolean | void>;
   onStop?: () => void;
   /** Puts text back in the box (e.g. a queued message being edited); `seq` changes on every request. */
   injected?: { text: string; seq: number } | null;
 }
 
-interface FormValues {
-  prompt: string;
-  model: string;
-}
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+/** Shortcut that sends, as shown to the user. */
+export const SEND_SHORTCUT = isMac ? "⌘+Enter" : "Ctrl+Enter";
 
-/** Prompt box with the project's account link and a per-prompt model override; Enter sends. */
-export function Composer({ placeholder, defaultModel, permissionMode, onPermissionModeChange, busy = false, autoFocus, onSend, onStop, injected }: ComposerProps) {
-  const { account, settings } = useProjectContext();
-  const effectiveDefault = defaultModel ?? account?.defaultModel ?? settings.defaultModel;
-  const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormValues>({
-    defaultValues: { prompt: "", model: "" },
-  });
-  const model = watch("model");
+/**
+ * Prompt box with the chat's account, model and permission mode. Enter starts a new line and
+ * Cmd/Ctrl+Enter sends; the text is Markdown, formatted as it is typed. Unsent text is kept per chat.
+ */
+export function Composer({
+  placeholder,
+  draftKey,
+  model,
+  onModelChange,
+  permissionMode,
+  onPermissionModeChange,
+  lockedAccount,
+  busy = false,
+  autoFocus,
+  onSend,
+  onStop,
+  injected,
+}: ComposerProps) {
+  const { account: projectAccount, settings } = useProjectContext();
+  const locked = lockedAccount !== undefined;
+  const account = locked ? lockedAccount : projectAccount;
+  const effectiveDefault = account?.defaultModel ?? settings.defaultModel;
   const blocked = !account;
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [draft] = useState(() => loadDraft(draftKey));
+  const [text, setText] = useState(draft.text);
+  const [attachments, setAttachments] = useState<string[]>(draft.attachments);
+  const [sending, setSending] = useState(false);
+  const editor = useRef<MarkdownInputHandle>(null);
   const dragging = useFileDrop(!blocked, addFiles);
   const [pasting, setPasting] = useState(0);
 
   useEffect(() => {
-    if (injected) setValue("prompt", injected.text);
-  }, [injected, setValue]);
+    if (injected) editor.current?.setText(injected.text);
+  }, [injected]);
+
+  useEffect(() => saveDraft(draftKey, { text, attachments }), [draftKey, text, attachments]);
 
   function addFiles(paths: string[]) {
     setAttachments((prev) => [...prev, ...paths.filter((p) => !prev.includes(p))]);
   }
 
   /** Attaches files from the clipboard (Finder copies, screenshots); plain text pastes normally. */
-  async function onPaste(e: React.ClipboardEvent) {
-    if (blocked) return;
+  function onPaste(e: ClipboardEvent): boolean {
+    if (blocked || !e.clipboardData) return false;
     const data = e.clipboardData;
     const fileUrls = data
       .getData("text/uri-list")
@@ -74,12 +106,17 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
     const files = Array.from(data.files);
     // Office apps put a rendered "image.png" next to copied text; then the text is what was meant.
     const onlyRendering = files.length > 0 && files.every((f) => /^image\.\w+$/.test(f.name)) && data.getData("text/plain").trim() !== "";
-    if (fileUrls.length === 0 && (files.length === 0 || onlyRendering)) return;
+    if (fileUrls.length === 0 && (files.length === 0 || onlyRendering)) return false;
     e.preventDefault();
     if (fileUrls.length > 0) {
       addFiles(fileUrls.map((u) => decodeURIComponent(new URL(u).pathname)));
-      return;
+      return true;
     }
+    void pasteFiles(files);
+    return true;
+  }
+
+  async function pasteFiles(files: File[]) {
     setPasting((n) => n + files.length);
     const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, "");
     for (const [i, file] of files.entries()) {
@@ -101,16 +138,28 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
     else if (typeof picked === "string") addFiles([picked]);
   }
 
-  async function submit(values: FormValues) {
-    const prompt = values.prompt.trim();
-    if ((!prompt && attachments.length === 0) || blocked || pasting > 0) return;
-    await onSend(prompt, values.model.trim() || null, attachments);
-    reset({ prompt: "", model: "" });
-    setAttachments([]);
+  async function submit() {
+    const prompt = text.trim();
+    if ((!prompt && attachments.length === 0) || blocked || pasting > 0 || sending) return;
+    setSending(true);
+    try {
+      const sent = await onSend(prompt, model, attachments);
+      if (sent === false) return;
+      editor.current?.setText("");
+      setText("");
+      setAttachments([]);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
       <div className={classes.composer} data-dragging={dragging || undefined}>
         {dragging && (
           <div className={classes.dropOverlay}>
@@ -137,28 +186,16 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
             )}
           </Group>
         )}
-        <Textarea
-          variant="unstyled"
-          autosize
-          minRows={2}
-          maxRows={12}
+        <MarkdownInput
+          ref={editor}
+          initial={draft.text}
           disabled={blocked}
           placeholder={blocked ? t("Pick a Claude account for this project before chatting.") : placeholder}
           autoFocus={autoFocus}
-          data-composer
-          {...register("prompt")}
+          onChange={setText}
+          onSubmit={() => void submit()}
+          onShiftTab={() => onPermissionModeChange(nextPermissionMode(permissionMode))}
           onPaste={onPaste}
-          onKeyDown={(e) => {
-            if (e.key === "Tab" && e.shiftKey) {
-              e.preventDefault();
-              onPermissionModeChange(nextPermissionMode(permissionMode));
-              return;
-            }
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              handleSubmit(submit)();
-            }
-          }}
         />
         <Group justify="space-between" gap="xs" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" miw={0}>
@@ -167,6 +204,9 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
                 <IconPaperclip size={16} />
               </ActionIcon>
             </Tooltip>
+            <Text size="xs" c="dimmed" truncate>
+              {t("Enter: new line · {shortcut}: send", { shortcut: SEND_SHORTCUT })}
+            </Text>
           </Group>
           <Group gap={6} wrap="nowrap">
             {busy && onStop && (
@@ -176,13 +216,13 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
                 </ActionIcon>
               </Tooltip>
             )}
-            <Tooltip label={busy ? t("Queue: sent when Claude finishes") : t("Send")} disabled={!busy}>
+            <Tooltip label={busy ? t("Queue: sent when Claude finishes") : `${t("Send")} (${SEND_SHORTCUT})`}>
               <ActionIcon
                 type="submit"
                 radius="xl"
                 variant={busy ? "light" : "filled"}
                 disabled={blocked || pasting > 0}
-                loading={formState.isSubmitting}
+                loading={sending}
                 aria-label={busy ? t("Queue") : t("Send")}
               >
                 <IconArrowUp size={16} />
@@ -193,17 +233,37 @@ export function Composer({ placeholder, defaultModel, permissionMode, onPermissi
       </div>
       <Group gap={4} mt={6} px={4} wrap="nowrap">
         <ModelPicker
-          value={model || null}
+          value={model}
           defaultLabel={modelLabel(effectiveDefault, settings.catalog)}
           options={modelOptions(settings.catalog)}
           disabled={blocked}
-          onChange={(v) => setValue("model", v ?? "")}
+          onChange={onModelChange}
         />
         <PermissionPicker value={permissionMode} disabled={blocked} onChange={onPermissionModeChange} />
         <div style={{ flex: 1 }} />
-        <AccountLink />
+        {locked ? <LockedAccount account={lockedAccount} /> : <AccountLink />}
       </Group>
     </form>
+  );
+}
+
+/** The chat's account, read-only: switching accounts in the middle of a conversation breaks it. */
+function LockedAccount({ account }: { account: ClaudeAccount | null }) {
+  return (
+    <Tooltip
+      multiline
+      w={280}
+      label={
+        account
+          ? t("This chat always uses this Claude account. To use another one, start a new chat.")
+          : t("This chat's Claude account no longer exists. Start a new chat with another account.")
+      }
+    >
+      <Text size="xs" c={account ? "dimmed" : "yellow.5"} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <IconLock size={11} />
+        {account ? account.alias : t("Account removed")}
+      </Text>
+    </Tooltip>
   );
 }
 
@@ -215,14 +275,14 @@ interface ModelPickerProps {
   onChange: (value: string | null) => void;
 }
 
-/** Dropdown to override the model for the next message; "Por defecto" follows the account/app default. */
+/** Dropdown with the chat's model; "Por defecto" follows the account/app default. */
 function ModelPicker({ value, defaultLabel, options, disabled, onChange }: ModelPickerProps) {
   const current = options.find((o) => o.value === value);
   const check = (on: boolean) => (on ? <IconCheck size={14} /> : <span style={{ width: 14 }} />);
   return (
     <Menu position="top-start" withinPortal shadow="md" width={240}>
       <Menu.Target>
-        <UnstyledButton className={classes.modelPicker} disabled={disabled} aria-label={t("Model for this message")}>
+        <UnstyledButton className={classes.modelPicker} disabled={disabled} aria-label={t("Model for this chat")}>
           <IconCpu size={14} />
           <Text size="xs" fw={current ? 600 : 400} c={current ? "gray.2" : undefined}>
             {current ? current.label : defaultLabel}
@@ -231,7 +291,7 @@ function ModelPicker({ value, defaultLabel, options, disabled, onChange }: Model
         </UnstyledButton>
       </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Label>{t("Model for this message")}</Menu.Label>
+        <Menu.Label>{t("Model for this chat")}</Menu.Label>
         <Menu.Item leftSection={check(!current)} onClick={() => onChange(null)} rightSection={<Text size="xs" c="dimmed">{defaultLabel}</Text>}>
           {t("Default")}
         </Menu.Item>

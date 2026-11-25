@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActionIcon, Button, Group, Text } from "@mantine/core";
 import { IconPlayerPlay, IconRefresh, IconX } from "@tabler/icons-react";
 import { isActive, processKey, stopProcess } from "../../api/processes";
+import { hasWorktree } from "../../api/sessions";
 import { notifyError } from "../../hooks/notify";
 import type { Session } from "../../types";
 import { useRunCommand } from "../processes/useRunCommand";
@@ -19,7 +20,7 @@ export function ServeBanner({ session }: { session: Session }) {
   // Dismissing hides it until Claude's next turn changes lastActivityAt.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const turnKey = `${session.id}:${session.lastActivityAt}`;
-  const isolated = session.mode === "isolated";
+  const isolated = hasWorktree(session);
   const target = isolated ? session.id : null;
 
   if (session.status !== "done" || dismissed === turnKey) return null;

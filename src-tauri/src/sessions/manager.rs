@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use crate::commands::windows::project_window_label;
 use crate::error::{AppError, AppResult};
 use crate::i18n::tr;
-use crate::models::{PendingMessage, Session, SessionStatus};
+use crate::models::{PendingMessage, Session, SessionMode, SessionStatus};
 use crate::proc_tree::{self, ProcessTree};
 use crate::sessions::history::History;
 use crate::sessions::stream::{edited_file, parse_line, ChatItem, Parsed};
@@ -63,7 +63,28 @@ pub struct SessionManager {
     /// Sessions that were already resumed automatically after their background work was cut off;
     /// cleared when the user writes, so a cut-off turn is resumed at most once per message.
     auto_resumed: Mutex<HashSet<String>>,
+    /// Isolated sessions whose worktrees are being created right before their first editing turn.
+    preparing: Mutex<HashSet<String>>,
+    /// Sessions whose plan the user approved before they had a worktree: once the planning turn ends,
+    /// the implementation runs as a new turn inside the worktree.
+    implement_plan: Mutex<HashSet<String>>,
     queue: Mutex<VecDeque<Queued>>,
+}
+
+/// Extra system prompt of consult chats (they run in plan mode).
+const CONSULT_PROMPT: &str = "This ClaudeStorm chat starts in consult mode: you can read and investigate, but not change anything yet. \
+Answer questions and explanations directly, without a plan. Only when the user asks you to change code or files, \
+investigate, then call ExitPlanMode with your plan: once it is accepted, ClaudeStorm picks the folder you will edit \
+(the main checkout or a new git worktree) and you implement it in the next turn.";
+
+/// A consult chat: it has not been asked to change anything yet, so it has no folder of its own.
+pub fn is_consult(session: &Session) -> bool {
+    session.mode == SessionMode::Consult
+}
+
+/// An isolated session that has not created its worktrees yet: it plans and reads in the main checkout.
+pub fn awaits_worktree(session: &Session) -> bool {
+    session.mode == SessionMode::Isolated && session.branch.is_none() && session.workspace.is_none()
 }
 
 /// Emits a session's latest state to its project window.
@@ -74,7 +95,12 @@ pub fn emit_session<R: Runtime>(app: &AppHandle<R>, session: &Session) {
 impl SessionManager {
     /// True while a session has a live process.
     pub fn is_running(&self, id: &str) -> bool {
-        self.running.lock().unwrap().contains_key(id)
+        self.running.lock().unwrap().contains_key(id) || self.preparing.lock().unwrap().contains(id)
+    }
+
+    /// Remembers that the user approved the plan of a session still without worktree.
+    pub fn implement_after_turn(&self, id: &str) {
+        self.implement_plan.lock().unwrap().insert(id.to_string());
     }
 
     /// Records the prompt and runs it now, or queues it when the parallel limit is reached.
@@ -111,8 +137,9 @@ impl SessionManager {
     /// Records the messages in the chat and runs them as one prompt (or queues it for a free slot).
     fn dispatch<R: Runtime>(&self, app: &AppHandle<R>, session: &Session, messages: Vec<PendingMessage>) -> AppResult<Session> {
         let store = app.state::<Store>();
+        let session = &pin_account(&store, session)?;
         let session_id = session.id.as_str();
-        let account = project_account(&store, &session.project_id)?;
+        let account = session_account(&store, session)?;
         let items = messages
             .iter()
             .map(|m| ChatItem::Prompt {
@@ -155,7 +182,7 @@ impl SessionManager {
         if session.status == SessionStatus::Queued {
             let mut taken = Vec::new();
             let session = store.update_session(session_id, |s| taken = std::mem::take(&mut s.pending))?;
-            let account = project_account(&store, &session.project_id)?;
+            let account = session_account(&store, &session)?;
             let items = taken
                 .iter()
                 .map(|m| ChatItem::Prompt {
@@ -215,6 +242,12 @@ impl SessionManager {
             emit_session(app, &updated);
             return Ok(());
         }
+        // Still creating its worktrees: they are kept, but Claude does not start afterwards.
+        if self.preparing.lock().unwrap().remove(session_id) {
+            let updated = app.state::<Store>().update_session(session_id, |s| s.status = SessionStatus::Interrupted)?;
+            emit_session(app, &updated);
+            return Ok(());
+        }
         let tree = self.running.lock().unwrap().get(session_id).cloned();
         if let Some(tree) = tree {
             self.stopping.lock().unwrap().insert(session_id.to_string());
@@ -228,6 +261,7 @@ impl SessionManager {
         let store = app.state::<Store>();
         let ids: Vec<String> = store.read(|d| d.sessions.iter().filter(|s| s.project_id == project_id).map(|s| s.id.clone()).collect());
         self.queue.lock().unwrap().retain(|q| !ids.contains(&q.session_id));
+        self.preparing.lock().unwrap().retain(|id| !ids.contains(id));
         // Only sessions with a live process are flagged: a flag on an idle session would survive and
         // turn its next normal finish into "Stopped by the user".
         let (live, trees): (Vec<String>, Vec<Arc<ProcessTree>>) = {
@@ -257,7 +291,7 @@ impl SessionManager {
     }
 
     /// Appends items to history and emits them.
-    fn record<R: Runtime>(&self, app: &AppHandle<R>, session: &Session, items: Vec<ChatItem>) {
+    pub fn record<R: Runtime>(&self, app: &AppHandle<R>, session: &Session, items: Vec<ChatItem>) {
         let history = History::new(&app.state::<Store>().dir());
         if let Err(err) = history.append(&session.id, &items) {
             eprintln!("could not write history of {}: {err}", session.id);
@@ -272,6 +306,10 @@ impl SessionManager {
     fn start<R: Runtime>(&self, app: &AppHandle<R>, session_id: &str, prompt: String, model: Option<String>) -> AppResult<Session> {
         let store = app.state::<Store>();
         let session = store.session(session_id)?;
+        // Plan mode cannot edit, so it keeps reading the main checkout; any other turn may edit.
+        if awaits_worktree(&session) && session.permission_mode != "plan" {
+            return self.start_in_new_worktree(app, session, prompt, model);
+        }
         let project = store.project(&session.project_id)?;
         let dirs: Vec<PathBuf> = session
             .repo_ids
@@ -292,15 +330,29 @@ impl SessionManager {
             },
         };
         let claude = crate::shell_env::which("claude").ok_or_else(|| AppError::msg("The `claude` CLI was not found in PATH."))?;
-        let account = project_account(&store, &session.project_id)?;
+        let account = session_account(&store, &session)?;
         let (account_vars, cleared_vars) = crate::accounts::account_env(&account, &store.dir())?;
+        // A session can change folders (worktree created, or removed again by "archive all"); Claude
+        // Code only resumes conversations stored under the current cwd.
+        if session.has_conversation {
+            if let Some(config) = crate::sessions::transcript::config_dir(&account_vars) {
+                let _ = crate::sessions::transcript::copy_to_cwd(&config, &session.claude_session_id, &cwd);
+            }
+        }
 
         let runtime = tauri::async_runtime::handle();
         let _context = runtime.inner().enter();
         let mut cmd = crate::shell_env::async_command(&claude.to_string_lossy());
+        // A consult chat reads but never edits: plan mode until it asks to change something
+        // (ExitPlanMode), which is when it gets its folder (see mcp::tools::approval).
+        let consult = session.mode == SessionMode::Consult && !session.repo_ids.is_empty();
+        let permission_mode = if consult { "plan" } else { session.permission_mode.as_str() };
         cmd.arg("-p")
             .args(["--output-format", "stream-json", "--verbose", "--include-partial-messages"])
-            .args(["--permission-mode", &session.permission_mode]);
+            .args(["--permission-mode", permission_mode]);
+        if consult {
+            cmd.args(["--append-system-prompt", CONSULT_PROMPT]);
+        }
         if session.has_conversation {
             cmd.args(["--resume", &session.claude_session_id]);
         } else {
@@ -382,6 +434,96 @@ impl SessionManager {
         Ok(updated)
     }
 
+    /// Creates the session's worktrees in the background, moves its Claude conversation there and
+    /// then starts the turn. The session counts as working meanwhile, so new messages queue up.
+    fn start_in_new_worktree<R: Runtime>(&self, app: &AppHandle<R>, session: Session, prompt: String, model: Option<String>) -> AppResult<Session> {
+        let store = app.state::<Store>();
+        let project = store.project(&session.project_id)?;
+        let account = session_account(&store, &session)?;
+        let (account_vars, _) = crate::accounts::account_env(&account, &store.dir())?;
+        let id = session.id.clone();
+        self.preparing.lock().unwrap().insert(id.clone());
+        let updated = store.update_session(&id, |s| {
+            s.status = SessionStatus::Working;
+            s.last_activity_at = Utc::now();
+            s.last_error = None;
+        })?;
+        emit_session(app, &updated);
+        self.record(
+            app,
+            &updated,
+            vec![ChatItem::Notice {
+                level: "info".into(),
+                text: tr("Creating the session's worktree before Claude starts working…", "Creando el worktree de la sesión antes de que Claude empiece a trabajar…"),
+            }],
+        );
+
+        let app = app.clone();
+        let app_data = store.dir();
+        tauri::async_runtime::spawn(async move {
+            let snapshot = session.clone();
+            let made = tauri::async_runtime::spawn_blocking(move || -> AppResult<(crate::sessions::worktree::SessionWorktrees, bool)> {
+                let made = crate::sessions::worktree::create_for_session(&app_data, &project, &snapshot)?;
+                // Claude Code finds conversations by cwd, and the cwd is about to become the first worktree.
+                let first = snapshot.repo_ids.first().and_then(|rid| project.repos.iter().find(|r| &r.id == rid));
+                let moved = match first.filter(|r| snapshot.has_conversation && made.base_branches.contains_key(&r.id)) {
+                    Some(repo) => crate::sessions::transcript::config_dir(&account_vars)
+                        .is_some_and(|config| {
+                            let cwd = worktree_dir(&app_data, &snapshot, &repo.name);
+                            crate::sessions::transcript::copy_to_cwd(&config, &snapshot.claude_session_id, &cwd).unwrap_or(false)
+                        }),
+                    None => true,
+                };
+                Ok((made, moved))
+            })
+            .await
+            .map_err(|e| AppError::msg(e.to_string()))
+            .and_then(|r| r);
+
+            let manager = app.state::<SessionManager>();
+            let store = app.state::<Store>();
+            let wanted = manager.preparing.lock().unwrap().remove(&id);
+            let started = made.and_then(|(made, moved)| {
+                let mut text = tr("Worktree ready.", "Worktree preparado.");
+                for note in &made.notes {
+                    text.push('\n');
+                    text.push_str(note);
+                }
+                if !moved {
+                    text.push('\n');
+                    text.push_str(&tr(
+                        "The conversation could not be moved into the worktree: Claude starts a new one there and does not remember the earlier messages.",
+                        "No pude mover la conversación al worktree: Claude empieza una nueva ahí y no recuerda los mensajes anteriores.",
+                    ));
+                }
+                let updated = store.update_session(&id, |s| {
+                    s.branch = Some(made.branch);
+                    s.base_branches = made.base_branches;
+                    if !moved {
+                        s.has_conversation = false;
+                        s.claude_session_id = uuid::Uuid::new_v4().to_string();
+                    }
+                })?;
+                manager.record(&app, &updated, vec![ChatItem::Notice { level: if moved { "info" } else { "warn" }.into(), text }]);
+                emit_session(&app, &updated);
+                if wanted {
+                    manager.start(&app, &id, prompt, model)?;
+                }
+                Ok(())
+            });
+            if let Err(err) = started {
+                if let Ok(session) = store.update_session(&id, |s| {
+                    s.status = SessionStatus::Error;
+                    s.last_error = Some(err.to_string());
+                }) {
+                    manager.record(&app, &session, vec![ChatItem::Notice { level: "error".into(), text: err.to_string() }]);
+                    emit_session(&app, &session);
+                }
+            }
+        });
+        Ok(updated)
+    }
+
     /// Updates the session after its process exits.
     fn finish<R: Runtime>(&self, app: &AppHandle<R>, id: &str, turn: TurnState, code: Option<i32>, stopped: bool, stderr: String) {
         let store = app.state::<Store>();
@@ -402,6 +544,7 @@ impl SessionManager {
         // Queued messages follow a normal finish or an "Enviar ya" interruption; after an error or
         // a plain stop they stay queued so the user decides.
         let flush = !session.pending.is_empty() && ((!stopped && !failed) || (stopped && send_now));
+        let implement = self.implement_plan.lock().unwrap().remove(id) && !stopped && !failed;
         let mut notices = Vec::new();
         if stopped && send_now {
             notices.push(ChatItem::Notice { level: "info".into(), text: tr("Interrupted to send your messages.", "Interrumpida para enviar tus mensajes.") });
@@ -454,6 +597,26 @@ impl SessionManager {
             };
             s.last_error = failed.then(|| stderr.trim().lines().last().unwrap_or("error").to_string());
         });
+        // The approved plan runs as the next turn, out of plan mode, so it gets its worktree first.
+        if implement {
+            let message = PendingMessage {
+                id: crate::models::new_id(),
+                text: tr("Implement the approved plan (automatic)", "Implementa el plan aprobado (automático)"),
+                prompt: "The user approved your plan. Implement it now.".into(),
+                model: None,
+                attachments: Vec::new(),
+                at: Utc::now(),
+            };
+            let queued = store.update_session(id, |s| {
+                if s.permission_mode == "plan" {
+                    s.permission_mode = "acceptEdits".into();
+                }
+                s.pending.insert(0, message);
+            });
+            if queued.is_ok() && matches!(self.flush_pending(app, id), Ok(Some(_))) {
+                return;
+            }
+        }
         if resume {
             let message = PendingMessage {
                 id: crate::models::new_id(),
@@ -575,8 +738,8 @@ fn handle_line<R: Runtime>(app: &AppHandle<R>, id: &str, line: &str, turn: &mut 
         }
     }
     if !parsed.rate_windows.is_empty() {
-        if let Some(account_id) = app.state::<Store>().project(&session.project_id).ok().and_then(|p| p.account_id) {
-            app.state::<UsageService>().apply_rate_windows(app, &account_id, &parsed.rate_windows);
+        if let Ok(account) = session_account(&app.state::<Store>(), &session) {
+            app.state::<UsageService>().apply_rate_windows(app, &account.id, &parsed.rate_windows);
         }
     }
     for item in &parsed.items {
@@ -645,13 +808,47 @@ fn with_attachment_list(prompt: String, files: &[PathBuf]) -> String {
     format!("{prompt}\n\nAttached files (read them if relevant):\n{}", list.join("\n"))
 }
 
-/// The Claude account selected by a project; sessions refuse to run without one.
-fn project_account(store: &Store, project_id: &str) -> AppResult<crate::models::ClaudeAccount> {
+/// The Claude account selected by a project: the one new chats start with.
+pub fn project_account(store: &Store, project_id: &str) -> AppResult<crate::models::ClaudeAccount> {
     let project = store.project(project_id)?;
     let id = project.account_id.ok_or_else(|| AppError::msg("This project has no Claude account. Pick one before chatting."))?;
     store
         .read(|d| d.accounts.iter().find(|a| a.id == id).cloned())
         .ok_or_else(|| AppError::msg("The project's Claude account no longer exists. Pick another one."))
+}
+
+/// The Claude account a chat runs with: the one fixed when it was created. Chats from before
+/// accounts were per chat get one pinned now (see `pin_account`).
+pub fn session_account(store: &Store, session: &Session) -> AppResult<crate::models::ClaudeAccount> {
+    match &session.account_id {
+        Some(id) => store
+            .read(|d| d.accounts.iter().find(|a| &a.id == id).cloned())
+            .ok_or_else(|| AppError::msg("This chat's Claude account no longer exists. Start a new chat with another account.")),
+        None => project_account(store, &session.project_id),
+    }
+}
+
+/// Fixes the account of a chat that has none yet: the one its last message used (from the history),
+/// else the project's. Returns the session as stored.
+pub fn pin_account(store: &Store, session: &Session) -> AppResult<Session> {
+    if session.account_id.is_some() {
+        return Ok(session.clone());
+    }
+    let used = History::new(&store.dir()).read(&session.id).ok().and_then(|items| {
+        items.iter().rev().find_map(|item| match item {
+            ChatItem::Prompt { account: Some(alias), .. } => Some(alias.clone()),
+            _ => None,
+        })
+    });
+    let by_alias = used.and_then(|alias| store.read(|d| d.accounts.iter().find(|a| a.alias == alias).map(|a| a.id.clone())));
+    let id = match by_alias {
+        Some(id) => id,
+        None => match project_account(store, &session.project_id) {
+            Ok(account) => account.id,
+            Err(_) => return Ok(session.clone()),
+        },
+    };
+    store.update_session(&session.id, |s| s.account_id = Some(id))
 }
 
 /// Folder Claude works in for a repo: the repo itself, or the session's worktree when isolated.
@@ -814,6 +1011,7 @@ mod e2e {
                     title: "e2e".into(),
                     description: None,
                     profile_id: None,
+                    account_id: None,
                     model: Some("haiku".into()),
                     permission_mode: "acceptEdits".into(),
                     repo_ids: vec![repo_id.clone()],

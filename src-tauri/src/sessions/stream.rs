@@ -47,6 +47,9 @@ pub enum ChatItem {
         input_tokens: Option<u64>,
         #[serde(default, alias = "output_tokens")]
         output_tokens: Option<u64>,
+        /// When it arrived; with the prompt's time it gives how long the whole turn took.
+        #[serde(default)]
+        at: Option<DateTime<Utc>>,
     },
     Notice { level: String, text: String },
 }
@@ -141,6 +144,7 @@ pub fn parse_line(line: &str) -> Parsed {
                         .sum()
                 }),
                 output_tokens: v.pointer("/usage/output_tokens").and_then(Value::as_u64),
+                at: Some(Utc::now()),
             });
         }
         Some("system") if v.get("subtype").and_then(Value::as_str) == Some("background_tasks_changed") => {

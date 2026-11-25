@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragOverEvent, type DragStartEvent } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, type SortingStrategy, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Anchor, Menu, ScrollArea, Text, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
@@ -40,8 +40,11 @@ import { useProjectContext } from "../project/ProjectContext";
 import { RepoSettingsModal } from "../repos/RepoSettingsModal";
 import { useAddFolder } from "../repos/useAddRepos";
 import classes from "./projects-tool.module.css";
-import { applyMove, flatten, INDENT, moveRepoToGroup, patchGroup, project as projectDrop, type FlatItem, ungroup } from "./repoTree";
+import { applyMove, dropsIntoGroup, flatten, INDENT, moveRepoToGroup, patchGroup, project as projectDrop, type FlatItem, ungroup } from "./repoTree";
 import { t } from "../../i18n";
+
+/** While a repo hovers over a group to go inside it, the other rows stay put. */
+const stayPut: SortingStrategy = () => null;
 
 const NODE_FRAMEWORKS: Framework[] = ["next", "nuxt", "svelte", "astro", "angular", "vue", "solid", "gatsby", "nest", "vite", "react", "expo", "node"];
 
@@ -63,6 +66,10 @@ export function ProjectsTool({ style, onMinimize }: { style?: React.CSSPropertie
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [offsetX, setOffsetX] = useState(0);
+  /** Group row (node id) the dragged repo would be dropped into. */
+  const [intoGroup, setIntoGroup] = useState<string | null>(null);
+  /** Group rows measured when a drag starts, before other rows shift around. */
+  const groupRects = useRef(new Map<string, DOMRect>());
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -71,7 +78,7 @@ export function ProjectsTool({ style, onMinimize }: { style?: React.CSSPropertie
   }, [project.layout, activeId]);
 
   const items = useMemo(() => flatten(layout, activeId?.startsWith("group:") ? activeId : undefined), [layout, activeId]);
-  const projection = activeId && overId ? projectDrop(items, activeId, overId, offsetX) : null;
+  const projection = activeId && overId && !intoGroup ? projectDrop(items, activeId, overId, offsetX) : null;
   const reposById = new Map(project.repos.map((r) => [r.id, r]));
   const groups = layout.filter((i): i is Extract<LayoutItem, { kind: "group" }> => i.kind === "group");
 
@@ -90,10 +97,30 @@ export function ProjectsTool({ style, onMinimize }: { style?: React.CSSPropertie
     setActiveId(String(e.active.id));
     setOverId(String(e.active.id));
     setOffsetX(0);
+    setIntoGroup(null);
+    groupRects.current = new Map(
+      Array.from(document.querySelectorAll<HTMLElement>('[data-node^="group:"]')).map((el) => [el.dataset.node!, el.getBoundingClientRect()]),
+    );
   }
 
   function onDragMove(e: DragMoveEvent) {
     setOffsetX(e.delta.x);
+    setIntoGroup(groupUnder(e));
+  }
+
+  /**
+   * The group row the pointer holds a dragged repo over (its middle part; the edges reorder). Rows are
+   * measured where they sit before any drag shifting, so the target does not run away from the pointer.
+   */
+  function groupUnder(e: DragMoveEvent | DragEndEvent): string | null {
+    if (!String(e.active.id).startsWith("repo:") || !(e.activatorEvent instanceof PointerEvent)) return null;
+    const pointerY = e.activatorEvent.clientY + e.delta.y;
+    for (const item of items) {
+      if (item.kind !== "group") continue;
+      const rect = groupRects.current.get(item.id);
+      if (rect && pointerY >= rect.top && pointerY <= rect.top + rect.height && dropsIntoGroup(rect, pointerY)) return item.id;
+    }
+    return null;
   }
 
   function onDragOver(e: DragOverEvent) {
@@ -103,9 +130,12 @@ export function ProjectsTool({ style, onMinimize }: { style?: React.CSSPropertie
   function onDragEnd(e: DragEndEvent) {
     const active = String(e.active.id);
     const over = e.over ? String(e.over.id) : null;
-    const target = over ? projectDrop(items, active, over, e.delta.x) : null;
+    const into = groupUnder(e);
     setActiveId(null);
     setOverId(null);
+    setIntoGroup(null);
+    if (into) return persist(moveRepoToGroup(layout, active.slice("repo:".length), into.slice("group:".length)));
+    const target = over ? projectDrop(items, active, over, e.delta.x) : null;
     if (over && target) persist(applyMove(layout, active, over, target));
   }
 
@@ -142,9 +172,9 @@ export function ProjectsTool({ style, onMinimize }: { style?: React.CSSPropertie
             onDragMove={onDragMove}
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
-            onDragCancel={() => setActiveId(null)}
+            onDragCancel={() => (setActiveId(null), setIntoGroup(null))}
           >
-            <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={items.map((i) => i.id)} strategy={intoGroup ? stayPut : verticalListSortingStrategy}>
               {items.map((item) => {
                 const depth = item.id === activeId && projection ? projection.depth : item.depth;
                 if (item.kind === "group") {
@@ -153,6 +183,7 @@ export function ProjectsTool({ style, onMinimize }: { style?: React.CSSPropertie
                     <SortableRow key={item.id} item={item} depth={depth}>
                       <GroupRow
                         group={group}
+                        dropTarget={intoGroup === item.id}
                         renaming={renamingGroup === group.id}
                         onRenameDone={(name) => {
                           setRenamingGroup(null);
@@ -200,6 +231,7 @@ function SortableRow({ item, depth, children }: { item: FlatItem; depth: number;
   return (
     <div
       ref={setNodeRef}
+      data-node={item.id}
       style={{
         transform: CSS.Translate.toString(transform),
         transition,
@@ -220,6 +252,8 @@ function SortableRow({ item, depth, children }: { item: FlatItem; depth: number;
 
 interface GroupRowProps {
   group: Extract<LayoutItem, { kind: "group" }>;
+  /** A dragged repo would be dropped inside. */
+  dropTarget: boolean;
   renaming: boolean;
   onRename: () => void;
   onRenameDone: (name: string) => void;
@@ -228,11 +262,11 @@ interface GroupRowProps {
 }
 
 /** Group header: collapse, inline rename and ungroup. */
-function GroupRow({ group, renaming, onRename, onRenameDone, onToggle, onUngroup }: GroupRowProps) {
+function GroupRow({ group, dropTarget, renaming, onRename, onRenameDone, onToggle, onUngroup }: GroupRowProps) {
   return (
-    <div className={classes.row} onClick={onToggle}>
+    <div className={classes.row} data-drop-target={dropTarget || undefined} onClick={onToggle}>
       {group.collapsed ? <IconChevronRight size={14} className={classes.chevron} /> : <IconChevronDown size={14} className={classes.chevron} />}
-      <IconFolder size={18} stroke={1.6} color="var(--mantine-color-yellow-5)" />
+      {dropTarget ? <IconFolderOpen size={18} stroke={1.6} color="var(--mantine-color-yellow-4)" /> : <IconFolder size={18} stroke={1.6} color="var(--mantine-color-yellow-5)" />}
       {renaming ? (
         <TextInput
           size="xs"

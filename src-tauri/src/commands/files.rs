@@ -117,3 +117,50 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
+
+/// Repos of the project to search: the picked ones, or all of them when none is picked.
+fn search_roots(store: &Store, project_id: &str, repo_ids: &[String]) -> AppResult<Vec<(String, PathBuf)>> {
+    let project = store.project(project_id)?;
+    Ok(project
+        .repos
+        .iter()
+        .filter(|r| repo_ids.is_empty() || repo_ids.contains(&r.id))
+        .map(|r| (r.id.clone(), PathBuf::from(&r.path)))
+        .collect())
+}
+
+/// Files whose name matches `query` (fuzzy, best first) in the picked repos.
+#[tauri::command]
+pub async fn search_file_names(
+    store: State<'_, Store>,
+    lists: State<'_, std::sync::Arc<crate::search::FileLists>>,
+    project_id: String,
+    repo_ids: Vec<String>,
+    query: String,
+) -> AppResult<Vec<crate::search::NameHit>> {
+    let roots = search_roots(&store, &project_id, &repo_ids)?;
+    let lists = lists.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crate::search::find_names(&lists, &roots, &query, 100))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))
+}
+
+/// Lines containing `query` (plain text) in the picked repos.
+#[tauri::command]
+pub async fn search_in_files(
+    store: State<'_, Store>,
+    lists: State<'_, std::sync::Arc<crate::search::FileLists>>,
+    project_id: String,
+    repo_ids: Vec<String>,
+    query: String,
+    case_sensitive: bool,
+) -> AppResult<Vec<crate::search::TextHit>> {
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let roots = search_roots(&store, &project_id, &repo_ids)?;
+    let lists = lists.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crate::search::find_text(&lists, &roots, &query, case_sensitive, 500))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))
+}

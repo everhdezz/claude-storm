@@ -276,6 +276,7 @@ mod tests {
                     title: "mcp".into(),
                     description: None,
                     profile_id: None,
+                    account_id: None,
                     model: Some("haiku".into()),
                     permission_mode: "acceptEdits".into(),
                     repo_ids: vec!["r".into()],

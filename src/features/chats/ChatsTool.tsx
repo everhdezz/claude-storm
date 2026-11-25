@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { ActionIcon, Button, CloseButton, ScrollArea, Switch, Text, TextInput, Tooltip } from "@mantine/core";
-import { IconPlus, IconSearch } from "@tabler/icons-react";
-import { useNavigate, useParams } from "react-router";
+import { modals } from "@mantine/modals";
+import { IconArchive, IconPlus, IconSearch } from "@tabler/icons-react";
+import { archiveIdleSessions, isBusy } from "../../api/sessions";
 import { Island } from "../../components/ide/Island";
+import { notifyError, notifySuccess } from "../../hooks/notify";
 import { useProjectContext } from "../project/ProjectContext";
 import { SessionCard } from "../sessions/SessionCard";
-import { t } from "../../i18n";
+import { t, tn } from "../../i18n";
 
 /** Left tool window with the project's parallel Claude sessions. */
 export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; onMinimize?: () => void }) {
-  const { project, sessions, ui, showChat, mainView } = useProjectContext();
-  const { sessionId } = useParams();
-  const navigate = useNavigate();
+  const { project, sessions, ui, openChat, closeChat, activeTab } = useProjectContext();
+  const openSessionId = activeTab?.kind === "chat" ? activeTab.sessionId : null;
   const [showArchived, setShowArchived] = useState(ui.initial.showArchived ?? false);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -24,12 +25,34 @@ export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; 
   );
   const working = sessions.filter((s) => s.status === "working").length;
   const queued = sessions.filter((s) => s.status === "queued").length;
+  const idle = sessions.filter((s) => !s.archived && !isBusy(s) && s.approvals.length === 0);
 
-  /** Opens the empty "Chatea con la IA" home; the first prompt there creates the session. */
+  /** Opens the empty "Chatea con la IA" home in a tab; the first prompt there creates the session. */
   function newSession() {
-    navigate(`/project/${project.id}`);
-    // Already on the home (no route change) the wiki would stay in front, so switch explicitly.
-    showChat();
+    openChat(null);
+  }
+
+  /** Archives every chat that is not running; worktrees without changes go away with their branch. */
+  function archiveAll() {
+    modals.openConfirmModal({
+      title: t("Archive all"),
+      centered: true,
+      children: (
+        <Text size="sm">
+          {tn(idle.length, "{count} chat that is not running is archived.", "{count} chats that are not running are archived.")}{" "}
+          {t("Worktrees without changes are deleted with their branch; those with changes are kept.")}
+        </Text>
+      ),
+      labels: { confirm: t("Archive"), cancel: t("Cancel") },
+      onConfirm: () => {
+        archiveIdleSessions(project.id)
+          .then((count) => {
+            for (const s of idle) closeChat(s.id);
+            notifySuccess(tn(count, "{count} chat archived", "{count} chats archived"));
+          })
+          .catch((e) => notifyError(e));
+      },
+    });
   }
 
   function closeSearch() {
@@ -65,6 +88,13 @@ export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; 
               <IconSearch size={15} />
             </ActionIcon>
           </Tooltip>
+          {!showArchived && (
+            <Tooltip label={t("Archive all that are not running")}>
+              <ActionIcon variant="subtle" color="gray" size="sm" onClick={archiveAll} disabled={idle.length === 0} aria-label={t("Archive all")}>
+                <IconArchive size={15} />
+              </ActionIcon>
+            </Tooltip>
+          )}
           <Tooltip label={t("New session")}>
             <ActionIcon variant="subtle" color="gray" size="sm" onClick={newSession} aria-label={t("New session")}>
               <IconPlus size={15} />
@@ -101,7 +131,7 @@ export function ChatsTool({ style, onMinimize }: { style?: React.CSSProperties; 
                 ? t("No archived sessions.") : t("No sessions yet. Write in “Chat with AI” or create a new one.")}
           </Text>
         ) : (
-          visible.map((s) => <SessionCard key={s.id} session={s} selected={mainView === "chat" && s.id === sessionId} />)
+          visible.map((s) => <SessionCard key={s.id} session={s} selected={s.id === openSessionId} />)
         )}
       </ScrollArea>
       <div style={{ padding: "6px 12px 10px" }}>

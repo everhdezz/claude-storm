@@ -10,8 +10,10 @@ use tauri::{AppHandle, Manager, Runtime};
 use crate::commands::processes::spawn_repo_command;
 use crate::commands::wiki::{self, WikiKind, WikiNode};
 use crate::error::{AppError, AppResult};
-use crate::models::{ApprovalRequest, Project, Repo, RepoCommand, Session, SessionMode};
-use crate::sessions::manager::emit_session;
+use crate::i18n::tr;
+use crate::models::{ApprovalRequest, Project, Repo, RepoCommand, Session, SessionMode, SessionStatus};
+use crate::sessions::manager::{awaits_worktree, emit_session, is_consult, SessionManager};
+use crate::sessions::stream::ChatItem;
 use crate::process_manager::{port_in_use, process_id, ProcessInfo, ProcessManager, ProcessStatus};
 use crate::sessions::manager::working_dir;
 use crate::store::Store;
@@ -263,26 +265,37 @@ async fn approval<R: Runtime>(app: &AppHandle<R>, session: &Session, args: &Valu
     let allow = |input: Value| json!({ "behavior": "allow", "updatedInput": input }).to_string();
     let rule = allow_rule(&tool_name, &input);
     let is_question = tool_name == "AskUserQuestion";
+    // A plan means the chat is about to edit: consult chats pick their folder first, and isolated
+    // ones without worktree implement it in the next turn, inside the worktree. Never let it
+    // through to this process, even when everything is allowed.
+    if tool_name == "ExitPlanMode" {
+        let current = app.state::<Store>().session(&session.id)?;
+        if is_consult(&current) {
+            return consult_plan(app, &current, input).await;
+        }
+        if awaits_worktree(&current) {
+            if !is_allowed(&session.allowed_tools, &rule) {
+                let decision = ask(app, &session.id, &tool_name, input).await?;
+                if !decision.allow {
+                    return Ok(deny(decision.message));
+                }
+            }
+            app.state::<SessionManager>().implement_after_turn(&session.id);
+            return Ok(json!({ "behavior": "deny", "message": IMPLEMENT_NEXT_TURN }).to_string());
+        }
+    }
     if !is_question && is_allowed(&session.allowed_tools, &rule) {
         return Ok(allow(input));
     }
 
     let store = app.state::<Store>();
-    let request = ApprovalRequest { id: crate::models::new_id(), tool_name: tool_name.clone(), input: input.clone(), at: chrono::Utc::now() };
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.state::<crate::mcp::McpState>().waiting.lock().unwrap().insert(request.id.clone(), tx);
-    let id = request.id.clone();
-    let updated = store.update_session(&session.id, |s| s.approvals.push(request))?;
-    emit_session(app, &updated);
-
-    let decision = rx.await.unwrap_or_default();
+    let decision = ask(app, &session.id, &tool_name, input.clone()).await?;
     let new_rule = match (decision.allow && !is_question, decision.all, decision.always) {
         (true, true, _) => Some(ALLOW_ALL.to_string()),
         (true, false, true) => Some(rule.clone()),
         _ => None,
     };
     if let Ok(updated) = store.update_session(&session.id, |s| {
-        s.approvals.retain(|a| a.id != id);
         if let Some(new_rule) = &new_rule {
             if !s.allowed_tools.contains(new_rule) {
                 s.allowed_tools.push(new_rule.clone());
@@ -302,12 +315,7 @@ async fn approval<R: Runtime>(app: &AppHandle<R>, session: &Session, args: &Valu
     }
 
     if !decision.allow {
-        let note = decision.message.filter(|m| !m.trim().is_empty());
-        let message = match note {
-            Some(note) => format!("The user denied this. Their note: {note}"),
-            None => "The user denied this action. Do not retry it; ask them how to proceed.".to_string(),
-        };
-        return Ok(json!({ "behavior": "deny", "message": message }).to_string());
+        return Ok(deny(decision.message));
     }
     if is_question {
         let mut input = input;
@@ -317,6 +325,145 @@ async fn approval<R: Runtime>(app: &AppHandle<R>, session: &Session, args: &Valu
         return Ok(allow(input));
     }
     Ok(allow(input))
+}
+
+/// What Claude is told when its plan is accepted but must be implemented in the next turn.
+const IMPLEMENT_NEXT_TURN: &str = "The user approved the plan. Do not implement it in this turn: reply with one short line saying \
+the plan is approved and stop. The implementation starts automatically in the next turn, in the folder the session edits.";
+
+/// Claude Code's answer for a denied permission, with the user's note when there is one.
+fn deny(note: Option<String>) -> String {
+    let message = match note.filter(|m| !m.trim().is_empty()) {
+        Some(note) => format!("The user denied this. Their note: {note}"),
+        None => "The user denied this action. Do not retry it; ask them how to proceed.".to_string(),
+    };
+    json!({ "behavior": "deny", "message": message }).to_string()
+}
+
+/// Shows a card in the chat and waits until the user answers it.
+async fn ask<R: Runtime>(app: &AppHandle<R>, session_id: &str, tool_name: &str, input: Value) -> AppResult<ApprovalDecision> {
+    let store = app.state::<Store>();
+    let request = ApprovalRequest { id: crate::models::new_id(), tool_name: tool_name.to_string(), input, at: chrono::Utc::now() };
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.state::<crate::mcp::McpState>().waiting.lock().unwrap().insert(request.id.clone(), tx);
+    let id = request.id.clone();
+    let updated = store.update_session(session_id, |s| s.approvals.push(request))?;
+    emit_session(app, &updated);
+    let decision = rx.await.unwrap_or_default();
+    if let Ok(updated) = store.update_session(session_id, |s| s.approvals.retain(|a| a.id != id)) {
+        emit_session(app, &updated);
+    }
+    Ok(decision)
+}
+
+/// A consult chat wants to change code: its plan is accepted (asking the user unless the chat's
+/// permission mode already accepts edits), then it gets a folder. When other work in the same
+/// repos could get in the way the user picks a new worktree or the main checkout; otherwise it
+/// edits the main checkout. The implementation runs as the next turn, with the chat's real mode.
+async fn consult_plan<R: Runtime>(app: &AppHandle<R>, session: &Session, input: Value) -> AppResult<String> {
+    let accepts_edits = matches!(session.permission_mode.as_str(), "acceptEdits" | "auto" | "bypassPermissions");
+    if !accepts_edits && !is_allowed(&session.allowed_tools, "ExitPlanMode") {
+        let decision = ask(app, &session.id, "ExitPlanMode", input).await?;
+        if !decision.allow {
+            return Ok(deny(decision.message));
+        }
+    }
+    let store = app.state::<Store>();
+    let project = store.project(&session.project_id)?;
+    let manager = app.state::<SessionManager>();
+    let others: Vec<(Session, bool)> = store.read(|d| {
+        d.sessions
+            .iter()
+            .filter(|s| s.id != session.id && s.project_id == session.project_id && !s.archived)
+            .map(|s| (s.clone(), manager.is_running(&s.id)))
+            .collect()
+    });
+    let (me, repos) = (session.clone(), project.repos.clone());
+    let (reasons, can_isolate) = tauri::async_runtime::spawn_blocking(move || parallel_work(&me, &repos, &others))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?;
+
+    let isolate = if reasons.is_empty() || !can_isolate {
+        false
+    } else {
+        let question = format!(
+            "{}\n\n{}",
+            tr(
+                "Claude is about to change code, but there is other work in these repos:",
+                "Claude va a cambiar código, pero hay otro trabajo en estos repos:"
+            ),
+            reasons.iter().map(|r| format!("• {r}")).collect::<Vec<_>>().join("\n")
+        );
+        let (worktree, same) = (tr("Create a worktree", "Crear un worktree"), tr("Same folder and branch", "Misma carpeta y rama"));
+        let input = json!({ "questions": [{
+            "question": question,
+            "header": tr("Where to work", "Dónde trabajar"),
+            "multiSelect": false,
+            "options": [
+                { "label": worktree, "description": tr("A new branch in its own folder: nothing gets mixed; you merge it when it is done.", "Una rama nueva en su propia carpeta: nada se mezcla; la integras cuando termine.") },
+                { "label": same, "description": tr("Edits the main checkout on its current branch, next to the other changes.", "Edita la copia principal en su rama actual, junto a los otros cambios.") },
+            ],
+        }]});
+        let decision = ask(app, &session.id, "AskUserQuestion", input).await?;
+        let picked = decision.answers.as_ref().and_then(|a| a.values().next()).and_then(Value::as_str).unwrap_or_default().to_string();
+        if !decision.allow {
+            return Ok(deny(Some("The user did not choose where to work, so do not change anything yet.".into())));
+        }
+        if picked == worktree {
+            true
+        } else if picked == same {
+            false
+        } else {
+            return Ok(deny(Some(format!("Asked where to work, the user answered: {picked}"))));
+        }
+    };
+
+    let updated = store.update_session(&session.id, |s| s.mode = if isolate { SessionMode::Isolated } else { SessionMode::Direct })?;
+    let text = if isolate {
+        tr("Changes requested: Claude will work in a new worktree.", "Se pidieron cambios: Claude trabajará en un worktree nuevo.")
+    } else {
+        tr("Changes requested: Claude will edit the main checkout.", "Se pidieron cambios: Claude editará la copia principal.")
+    };
+    manager.record(app, &updated, vec![ChatItem::Notice { level: "info".into(), text }]);
+    emit_session(app, &updated);
+    manager.implement_after_turn(&session.id);
+    Ok(json!({ "behavior": "deny", "message": IMPLEMENT_NEXT_TURN }).to_string())
+}
+
+/// Other work that a chat editing the main checkout could collide with: chats busy in the main
+/// checkout of the same repos and uncommitted changes there. Also whether a worktree is possible
+/// (some repo uses git).
+fn parallel_work(me: &Session, repos: &[Repo], others: &[(Session, bool)]) -> (Vec<String>, bool) {
+    let mine: Vec<&Repo> = repos.iter().filter(|r| me.repo_ids.contains(&r.id)).collect();
+    let mut reasons = Vec::new();
+    for (other, running) in others {
+        let busy = *running || matches!(other.status, SessionStatus::Working | SessionStatus::Queued) || !other.approvals.is_empty();
+        // Consult chats and isolated ones without worktree only read the main checkout.
+        if !busy || other.mode != SessionMode::Direct {
+            continue;
+        }
+        let shared: Vec<&str> = mine.iter().filter(|r| other.repo_ids.contains(&r.id)).map(|r| r.name.as_str()).collect();
+        if !shared.is_empty() {
+            reasons.push(format!("{} ({})", tr_fmt_working(&other.title), shared.join(", ")));
+        }
+    }
+    let mut can_isolate = false;
+    for repo in &mine {
+        let path = std::path::Path::new(&repo.path);
+        if !crate::git::is_repo(path) {
+            continue;
+        }
+        can_isolate = true;
+        let changed = crate::git::run_git(path, &["status", "--porcelain"]).map(|out| out.lines().filter(|l| !l.trim().is_empty()).count()).unwrap_or(0);
+        if changed > 0 {
+            reasons.push(format!("{}: {changed} {}", repo.name, tr("uncommitted changes in the main checkout", "cambios sin commit en la copia principal")));
+        }
+    }
+    (reasons, can_isolate)
+}
+
+fn tr_fmt_working(title: &str) -> String {
+    format!("«{title}» {}", tr("is working in the main checkout right now", "está trabajando en la copia principal ahora mismo"))
 }
 
 fn worktree_info(store: &Store, session: &Session, project: &Project) -> String {
@@ -335,7 +482,11 @@ fn worktree_info(store: &Store, session: &Session, project: &Project) -> String 
         .collect();
     pretty(&json!({
         "session": session.title,
-        "mode": if session.mode == SessionMode::Isolated { "isolated (own git worktree)" } else { "direct (edits the main checkout)" },
+        "mode": match session.mode {
+            SessionMode::Isolated => "isolated (own git worktree)",
+            SessionMode::Direct => "direct (edits the main checkout)",
+            SessionMode::Consult => "consult (read-only until a plan to change code is accepted)",
+        },
         "branch": session.branch,
         "workspace": session.workspace,
         "repos": repos,

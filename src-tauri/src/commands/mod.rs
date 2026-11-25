@@ -1,5 +1,6 @@
 pub mod files;
 pub mod git;
+pub mod keep_awake;
 pub mod processes;
 pub mod profiles;
 pub mod projects;

@@ -23,7 +23,7 @@ export function listSessions(projectId: string): Promise<Session[]> {
   return call("list_sessions", { projectId });
 }
 
-/** Creates a session (isolated ones get worktrees). */
+/** Creates a session (isolated ones get their worktrees on the first turn that may edit). */
 export function createSession(projectId: string, input: NewSessionInput): Promise<Session> {
   return call("create_session", { projectId, input });
 }
@@ -61,6 +61,11 @@ export function archiveSession(sessionId: string, archived: boolean, cleanup?: W
   return call("archive_session", { sessionId, archived, cleanup: cleanup ?? null });
 }
 
+/** Archives every session that is not running; returns how many. Unused worktrees are removed. */
+export function archiveIdleSessions(projectId: string): Promise<number> {
+  return call("archive_idle_sessions", { projectId });
+}
+
 /** Deletes a session and its history. */
 export function deleteSession(sessionId: string, cleanup?: WorktreeCleanup): Promise<void> {
   return call("delete_session", { sessionId, cleanup: cleanup ?? null });
@@ -86,6 +91,11 @@ export function sessionRemoveWorktrees(sessionId: string, deleteBranch: boolean)
   return call("session_remove_worktrees", { sessionId, deleteBranch });
 }
 
+/** True when the session already works in its own worktree (isolated ones get it when they start editing). */
+export function hasWorktree(session: Session): boolean {
+  return session.mode === "isolated" && session.branch !== null;
+}
+
 /** True while the session has a live or queued process. */
 export function isBusy(session: Session): boolean {
   return session.status === "working" || session.status === "queued";
@@ -97,9 +107,9 @@ export function modelLabel(model: string | null | undefined, catalog: CatalogMod
   return catalog.find((m) => m.id === model)?.label ?? model;
 }
 
-/** Model a session actually uses: the one Claude Code reported, else the configured fallback chain. */
+/** Model of a session: the one picked for the chat, else the one Claude Code reported, else the defaults. */
 export function sessionModelLabel(session: Session, account: ClaudeAccount | null, settings: AppSettings): string {
-  const model = session.lastModel ?? session.model ?? account?.defaultModel ?? settings.defaultModel;
+  const model = session.model ?? session.lastModel ?? account?.defaultModel ?? settings.defaultModel;
   return model ? modelLabel(model, settings.catalog) : t("Claude Code's model");
 }
 

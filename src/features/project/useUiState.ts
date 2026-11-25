@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { saveProjectUiState } from "../../api/projects";
 import type { LayoutPrefs } from "./useLayoutPrefs";
-import type { WikiUiState } from "../wiki/WikiView";
+import type { WikiUiState } from "../wiki/useWiki";
+import type { TabsUiState } from "./useMainTabs";
+import type { SearchUiState } from "../search/SearchEverywhere";
 import type { CodeUiState } from "../code/CodeView";
 
 /** Everything a project window restores when it is reopened. */
@@ -15,6 +17,8 @@ export interface ProjectUiState {
   runTarget?: string | null;
   wiki?: WikiUiState;
   code?: CodeUiState;
+  tabs?: TabsUiState;
+  search?: SearchUiState;
 }
 
 const DEBOUNCE_MS = 400;

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ActionIcon, Center, Stack, Text, Tooltip } from "@mantine/core";
-import { modals } from "@mantine/modals";
-import { IconCode, IconDeviceFloppy, IconRefresh, IconX } from "@tabler/icons-react";
+import { ActionIcon, Center, Group, Text, Tooltip } from "@mantine/core";
+import { IconDeviceFloppy, IconRefresh } from "@tabler/icons-react";
 import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -10,8 +9,6 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { repoReadFile, repoWriteFile } from "../../api/files";
-import { FileIcon, fileKind } from "../../components/FileIcon";
-import { Island } from "../../components/ide/Island";
 import { notifyError } from "../../hooks/notify";
 import { t } from "../../i18n";
 import { useProjectContext } from "../project/ProjectContext";
@@ -23,13 +20,15 @@ export interface CodeFile {
   path: string;
 }
 
-/** What the code editor remembers per project window. */
+/** What the code editor remembered before tabs moved to the main area (read once to migrate). */
 export interface CodeUiState {
   tabs?: CodeFile[];
   active?: number;
 }
 
-const keyOf = (f: CodeFile) => `${f.repoId}:${f.path}`;
+/** Same key as the file's tab in the main area. */
+export const codeKey = (f: CodeFile) => `code:${f.repoId}:${f.path}`;
+const keyOf = codeKey;
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** Loaded text of a tab: the editor state (keeps undo history) and the text last saved to disk. */
@@ -44,46 +43,59 @@ const theme = EditorView.theme({
   ".cm-gutters": { backgroundColor: "transparent", border: "none" },
 });
 
-/** Code editor of the main area: tabs of repo files opened from the Projects tree. */
-export function CodeView({ hidden, request }: { hidden: boolean; request: (CodeFile & { seq: number }) | null }) {
-  const { project, ui, setActiveFile } = useProjectContext();
-  const saved = ui.initial.code ?? {};
-  const [tabs, setTabs] = useState<CodeFile[]>(saved.tabs ?? []);
-  const [active, setActive] = useState<number>(Math.min(saved.active ?? 0, Math.max(0, (saved.tabs?.length ?? 1) - 1)));
+interface CodeViewProps {
+  hidden: boolean;
+  /** File of the active main-area tab, if that tab is a file. */
+  file: CodeFile | null;
+  /** Every file with an open tab; buffers of closed ones are dropped. */
+  open: CodeFile[];
+  /** Line to show in a file (from a search result); `seq` changes on every request. */
+  reveal: { key: string; line: number; seq: number } | null;
+  /** Keys (see `codeKey`) of files with unsaved edits. */
+  onDirtyChange: (keys: string[]) => void;
+}
+
+/** Code editor of the main area: shows the active file tab, keeping each open file's undo history. */
+export function CodeView({ hidden, file, open, reveal, onDirtyChange }: CodeViewProps) {
+  const { project } = useProjectContext();
   const [dirty, setDirty] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const buffers = useRef(new Map<string, Buffer>());
   const language = useRef(new Compartment());
-  const current = tabs[active] ?? null;
+  const current = file;
   const currentRef = useRef(current);
   currentRef.current = current;
 
   const reposById = new Map(project.repos.map((r) => [r.id, r]));
 
-  // Requests from the Projects tree open (or focus) a tab.
-  useEffect(() => {
-    if (!request) return;
-    const file = { repoId: request.repoId, path: request.path };
-    setTabs((prev) => {
-      const i = prev.findIndex((f) => keyOf(f) === keyOf(file));
-      if (i >= 0) {
-        setActive(i);
-        return prev;
-      }
-      setActive(prev.length);
-      return [...prev, file];
-    });
-  }, [request]);
+  useEffect(() => onDirtyChange(dirty), [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A requested line waits until its file is in the editor (it may still be loading).
+  const pendingReveal = useRef<{ key: string; line: number } | null>(null);
+  function applyReveal() {
+    const wanted = pendingReveal.current;
+    const editor = view.current;
+    if (!wanted || !editor || !currentRef.current || keyOf(currentRef.current) !== wanted.key) return;
+    const line = editor.state.doc.line(Math.min(Math.max(wanted.line, 1), editor.state.doc.lines));
+    editor.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+    editor.focus();
+    pendingReveal.current = null;
+  }
   useEffect(() => {
-    ui.save({ code: { tabs, active } });
-  }, [tabs, active, ui]);
+    if (!reveal) return;
+    pendingReveal.current = { key: reveal.key, line: reveal.line };
+    if (view.current && currentRef.current && keyOf(currentRef.current) === reveal.key && buffers.current.has(reveal.key)) applyReveal();
+  }, [reveal?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A closed tab forgets its buffer (and its unsaved edits, which the tab bar confirmed).
+  const openKeys = open.map(keyOf).join("\n");
   useEffect(() => {
-    setActiveFile(current);
-  }, [current?.repoId, current?.path]); // eslint-disable-line react-hooks/exhaustive-deps
+    const keep = new Set(openKeys.split("\n"));
+    for (const key of [...buffers.current.keys()]) if (!keep.has(key)) buffers.current.delete(key);
+    setDirty((prev) => (prev.every((k) => keep.has(k)) ? prev : prev.filter((k) => keep.has(k))));
+  }, [openKeys]);
 
   function save() {
     const file = currentRef.current;
@@ -150,6 +162,7 @@ export function CodeView({ hidden, request }: { hidden: boolean; request: (CodeF
       });
     }
     if (!hidden) view.current.focus();
+    applyReveal();
   }
 
   useEffect(() => {
@@ -158,43 +171,16 @@ export function CodeView({ hidden, request }: { hidden: boolean; request: (CodeF
 
   useEffect(() => () => view.current?.destroy(), []);
 
-  function close(index: number) {
-    const file = tabs[index]!;
-    const key = keyOf(file);
-    const doClose = () => {
-      buffers.current.delete(key);
-      setDirty((prev) => prev.filter((k) => k !== key));
-      setTabs((prev) => prev.filter((_, i) => i !== index));
-      setActive((a) => (index < a || a >= tabs.length - 1 ? Math.max(0, a - 1) : a));
-    };
-    if (!dirty.includes(key)) return doClose();
-    modals.openConfirmModal({
-      title: t("Discard changes?"),
-      centered: true,
-      children: <Text size="sm">{t("“{name}” has unsaved changes.", { name: baseName(file.path) })}</Text>,
-      labels: { confirm: t("Discard"), cancel: t("Cancel") },
-      confirmProps: { color: "red" },
-      onConfirm: doClose,
-    });
-  }
-
   const currentDirty = current ? dirty.includes(keyOf(current)) : false;
 
   return (
-    <Island
-      style={{ flex: 1, display: hidden ? "none" : undefined }}
-      title={
-        current ? (
+    <div style={{ flex: 1, minHeight: 0, display: hidden || !current ? "none" : "flex", flexDirection: "column" }}>
+      {current && (
+        <Group className={classes.toolbar} justify="space-between" wrap="nowrap" gap={6}>
           <Text size="xs" c="dimmed" truncate>
             {reposById.get(current.repoId)?.name ?? "?"} / {current.path}
           </Text>
-        ) : (
-          t("Code")
-        )
-      }
-      actions={
-        current && (
-          <>
+          <Group gap={4} wrap="nowrap">
             <Tooltip label={t("Reload from disk")}>
               <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => show(current, true)} aria-label={t("Reload from disk")}>
                 <IconRefresh size={14} />
@@ -205,44 +191,8 @@ export function CodeView({ hidden, request }: { hidden: boolean; request: (CodeF
                 <IconDeviceFloppy size={14} />
               </ActionIcon>
             </Tooltip>
-          </>
-        )
-      }
-    >
-      {tabs.length > 0 && (
-        <div className={classes.tabs}>
-          {tabs.map((file, i) => {
-            const key = keyOf(file);
-            return (
-              <div
-                key={key}
-                className={classes.tab}
-                data-active={i === active || undefined}
-                style={i === active ? { borderBottomColor: fileKind(baseName(file.path)).color } : undefined}
-                title={`${reposById.get(file.repoId)?.name ?? "?"} / ${file.path}`}
-                onClick={() => setActive(i)}
-                onAuxClick={(e) => e.button === 1 && close(i)}
-              >
-                <FileIcon name={baseName(file.path)} size={14} />
-                <span>{baseName(file.path)}</span>
-                {dirty.includes(key) && <span className={classes.dot} />}
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="xs"
-                  className={classes.close}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    close(i);
-                  }}
-                  aria-label={t("Close")}
-                >
-                  <IconX size={11} />
-                </ActionIcon>
-              </div>
-            );
-          })}
-        </div>
+          </Group>
+        </Group>
       )}
       <div ref={host} className={classes.editor} style={{ display: current && !error ? undefined : "none" }} />
       {current && error && (
@@ -252,16 +202,6 @@ export function CodeView({ hidden, request }: { hidden: boolean; request: (CodeF
           </Text>
         </Center>
       )}
-      {!current && (
-        <Center style={{ flex: 1 }}>
-          <Stack align="center" gap={6}>
-            <IconCode size={40} stroke={1.2} color="var(--mantine-color-dimmed)" />
-            <Text size="sm" c="dimmed">
-              {t("Open a file from the Projects tree.")}
-            </Text>
-          </Stack>
-        </Center>
-      )}
-    </Island>
+    </div>
   );
 }

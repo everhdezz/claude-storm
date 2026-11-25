@@ -1,6 +1,6 @@
 .window {
   display: grid;
-  grid-template-columns: 44px 1fr 44px;
+  grid-template-columns: 44px 1fr;
   grid-template-rows: 38px 1fr 26px;
   height: 100%;
   background: var(--dh-window-bg);
@@ -43,6 +43,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* No stripe on the right anymore: keep the islands off the window edge. */
+  padding-right: var(--dh-gap);
 }
 
 .topRow {

@@ -114,6 +114,9 @@ pub enum SessionStatus {
 pub enum SessionMode {
     Direct,
     Isolated,
+    /// Read-only until Claude is asked to change code: then the session becomes direct or isolated
+    /// (asking the user when other work in the same repos could get in the way).
+    Consult,
 }
 
 /// A parallel Claude Code conversation inside a project; its history lives in its own file.
@@ -127,6 +130,10 @@ pub struct Session {
     pub description: Option<String>,
     #[serde(default)]
     pub profile_id: Option<String>,
+    /// Claude account the chat runs with, fixed when it is created (switching accounts mid-conversation
+    /// breaks `--resume`). None only for chats made before 0.6.6: they take one on their next message.
+    #[serde(default)]
+    pub account_id: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     pub permission_mode: String,
