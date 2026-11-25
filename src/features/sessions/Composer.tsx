@@ -24,6 +24,7 @@ import classes from "./sessions.module.css";
 import { useFileDrop } from "./useFileDrop";
 import { loadDraft, saveDraft } from "./drafts";
 import { MarkdownInput, type MarkdownInputHandle } from "./MarkdownInput";
+import { AttachmentViewer } from "./AttachmentViewer";
 import { t } from "../../i18n";
 
 interface ComposerProps {
@@ -84,6 +85,7 @@ export function Composer({
   const editor = useRef<MarkdownInputHandle>(null);
   const dragging = useFileDrop(!blocked, addFiles);
   const [pasting, setPasting] = useState(0);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   useEffect(() => {
     if (injected) editor.current?.setText(injected.text);
@@ -171,10 +173,16 @@ export function Composer({
           <Group gap={6} mb={6}>
             {attachments.map((path) => (
               <div key={path} className={classes.attachment} title={path}>
-                {/\.(png|jpe?g|gif|webp|heic|tiff?)$/i.test(path) ? <IconPhoto size={13} /> : <IconFile size={13} />}
-                <Text size="xs" truncate maw={180}>
-                  {path.split(/[\\/]/).pop()}
-                </Text>
+                <UnstyledButton
+                  onClick={() => setViewing(path)}
+                  aria-label={t("View attachment")}
+                  style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}
+                >
+                  {/\.(png|jpe?g|gif|webp|heic|tiff?)$/i.test(path) ? <IconPhoto size={13} /> : <IconFile size={13} />}
+                  <Text size="xs" truncate maw={180} td="underline" style={{ textUnderlineOffset: 2, textDecorationColor: "var(--mantine-color-dark-3)" }}>
+                    {path.split(/[\\/]/).pop()}
+                  </Text>
+                </UnstyledButton>
                 <CloseButton size="xs" onClick={() => setAttachments((prev) => prev.filter((p) => p !== path))} aria-label={t("Remove attachment")} />
               </div>
             ))}
@@ -231,6 +239,7 @@ export function Composer({
           </Group>
         </Group>
       </div>
+      <AttachmentViewer attachment={viewing ? { path: viewing } : null} onClose={() => setViewing(null)} />
       <Group gap={4} mt={6} px={4} wrap="nowrap">
         <ModelPicker
           value={model}

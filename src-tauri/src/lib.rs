@@ -159,6 +159,8 @@ pub fn run() {
             commands::sessions::session_diff,
             commands::sessions::session_folders,
             commands::sessions::save_pasted_file,
+            commands::sessions::attachment_bytes,
+            commands::sessions::attachment_path_of,
             commands::sessions::session_send_now,
             commands::sessions::session_remove_pending,
             commands::sessions::session_answer_approval,

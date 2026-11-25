@@ -542,6 +542,10 @@ const es: Record<string, string> = {
   "Copy": "Copiar",
   "Consult mode: Claude only reads and answers. When you ask for changes it proposes them, and before editing it checks for other work in these repos; if there is any, it asks whether to create a worktree or work in the same folder and branch.": "Modo consulta: Claude solo lee y responde. Cuando pides cambios los propone y, antes de editar, revisa si hay otro trabajo en estos repos; si lo hay, te pregunta si crear un worktree o trabajar en la misma carpeta y rama.",
   "consult mode": "modo consulta",
+  "This type of file cannot be previewed.": "Este tipo de archivo no se puede previsualizar.",
+  "Could not show the file": "No se pudo mostrar el archivo",
+  "The file is long; only its beginning is shown.": "El archivo es largo; solo se muestra el inicio.",
+  "View attachment": "Ver adjunto",
 };
 
 export default es;

@@ -142,3 +142,24 @@ export function sessionRemovePending(sessionId: string, messageId: string): Prom
 export function sessionAnswerApproval(sessionId: string, approvalId: string, decision: ApprovalDecision): Promise<void> {
   return call("session_answer_approval", { sessionId, approvalId, decision });
 }
+
+/** An attachment: a file picked in the composer (`path`) or one already sent in a chat (`sessionId` + `name`). */
+export type AttachmentRef = { path: string } | { sessionId: string; name: string };
+
+function attachmentArgs(ref: AttachmentRef) {
+  return "path" in ref ? { path: ref.path, sessionId: null, name: null } : { path: null, sessionId: ref.sessionId, name: ref.name };
+}
+
+/** Raw bytes of an attachment, for the viewer. */
+export async function attachmentBytes(ref: AttachmentRef): Promise<ArrayBuffer> {
+  try {
+    return await invoke<ArrayBuffer>("attachment_bytes", attachmentArgs(ref));
+  } catch (err) {
+    throw new Error(errorMessage(err));
+  }
+}
+
+/** Full path of an attachment on disk. */
+export function attachmentPath(ref: AttachmentRef): Promise<string> {
+  return call("attachment_path_of", attachmentArgs(ref));
+}

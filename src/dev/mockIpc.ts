@@ -354,6 +354,10 @@ export function installMocks(): void {
         }
         case "send_session_prompt":
           return sessions.find((s) => s.id === a.sessionId) ?? null;
+        case "attachment_bytes":
+          return new TextEncoder().encode(`# Notes\n\nMock content of ${a.path ?? a.name}\n`).buffer;
+        case "attachment_path_of":
+          return String(a.path ?? a.name);
         case "session_history":
           // A working session's last turn has no result yet: it renders as live activity.
           return sessions.find((s) => s.id === a.sessionId)?.status === "working" ? history.filter((i) => i.kind !== "result") : history;

@@ -3,6 +3,7 @@ import { Badge, Group, Loader, Paper, Text, UnstyledButton } from "@mantine/core
 import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconFile, IconListDetails, IconStack2 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
 import { CopyablePre } from "./CopyablePre";
+import { AttachmentViewer } from "./AttachmentViewer";
 import remarkGfm from "remark-gfm";
 import { modelLabel } from "../../api/sessions";
 import type { ChatItem } from "../../types";
@@ -90,7 +91,7 @@ function toTurns(items: ChatItem[], working: boolean): Turn[] {
 }
 
 /** Renders a conversation: per turn, the work collapses into one activity block and the reply stands apart. */
-export function ChatItems({ items, streaming, working = false }: { items: ChatItem[]; streaming: string; working?: boolean }) {
+export function ChatItems({ sessionId, items, streaming, working = false }: { sessionId: string; items: ChatItem[]; streaming: string; working?: boolean }) {
   const results = new Map<string, ToolResult>();
   for (const item of items) if (item.kind === "toolResult") results.set(item.toolUseId, item);
   const turns = toTurns(items, working);
@@ -102,7 +103,7 @@ export function ChatItems({ items, streaming, working = false }: { items: ChatIt
         const liveStream = last && turn.live ? streaming : "";
         return (
           <Fragment key={turn.prompt?.index ?? `t${i}`}>
-            {turn.prompt && <PromptBubble item={turn.prompt.item as Extract<ChatItem, { kind: "prompt" }>} />}
+            {turn.prompt && <PromptBubble sessionId={sessionId} item={turn.prompt.item as Extract<ChatItem, { kind: "prompt" }>} />}
             {turn.activity.length > 0 && (
               <Activity entries={turn.activity} results={results} live={turn.live} streaming={liveStream} />
             )}
@@ -254,8 +255,9 @@ function Activity({ entries, results, live, streaming }: { entries: Entry[]; res
 }
 
 /** The user's prompt, right aligned. */
-function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> }) {
+function PromptBubble({ sessionId, item }: { sessionId: string; item: Extract<ChatItem, { kind: "prompt" }> }) {
   const { settings } = useProjectContext();
+  const [viewing, setViewing] = useState<string | null>(null);
   const catalog = settings.catalog;
   return (
     <div className={classes.promptRow} data-prompt>
@@ -266,13 +268,19 @@ function PromptBubble({ item }: { item: Extract<ChatItem, { kind: "prompt" }> })
         {item.attachments && item.attachments.length > 0 && (
           <Group gap={6} mt={6}>
             {item.attachments.map((name) => (
-              <Group key={name} gap={4} className={classes.attachment}>
+              <UnstyledButton
+                key={name}
+                className={`${classes.attachment} ${classes.attachmentChip}`}
+                onClick={() => setViewing(name)}
+                title={t("View attachment")}
+              >
                 <IconFile size={12} />
                 <Text size="xs">{name}</Text>
-              </Group>
+              </UnstyledButton>
             ))}
           </Group>
         )}
+        <AttachmentViewer attachment={viewing ? { sessionId, name: viewing } : null} onClose={() => setViewing(null)} />
       </Paper>
       <Text size="xs" c="dimmed" mt={4}>
         {[item.account, item.model ? modelLabel(item.model, catalog) : null, relativeTime(item.at)].filter(Boolean).join(" · ")}

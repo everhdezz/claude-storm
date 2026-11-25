@@ -451,6 +451,46 @@ pub fn save_pasted_file(store: State<Store>, request: tauri::ipc::Request) -> Ap
     Ok(path.to_string_lossy().to_string())
 }
 
+/// Largest attachment the viewer loads.
+const MAX_PREVIEW_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Where an attachment lives: a file picked in the composer (`path`), or one already sent, copied
+/// into the chat's folder (`session_id` + `name`).
+fn attachment_path(store: &Store, path: Option<String>, session_id: Option<String>, name: Option<String>) -> AppResult<PathBuf> {
+    if let Some(path) = path.filter(|p| !p.trim().is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+    let (Some(session_id), Some(name)) = (session_id, name) else {
+        return Err(AppError::msg("Missing attachment"));
+    };
+    // Names come from the history: keep them inside the chat's attachments folder.
+    let safe = pasted_file_name(&name);
+    if safe != name || session_id.contains(['/', '\\', '.']) {
+        return Err(AppError::msg("Invalid attachment name"));
+    }
+    Ok(crate::sessions::manager::attachments_dir(&store.dir(), &session_id).join(safe))
+}
+
+/// Full path of an attachment (to show it in Finder).
+#[tauri::command]
+pub fn attachment_path_of(store: State<Store>, path: Option<String>, session_id: Option<String>, name: Option<String>) -> AppResult<String> {
+    Ok(attachment_path(&store, path, session_id, name)?.to_string_lossy().to_string())
+}
+
+/// Raw bytes of an attachment, for the viewer.
+#[tauri::command]
+pub fn attachment_bytes(store: State<Store>, path: Option<String>, session_id: Option<String>, name: Option<String>) -> AppResult<tauri::ipc::Response> {
+    let file = attachment_path(&store, path, session_id, name)?;
+    let meta = std::fs::metadata(&file).map_err(|_| AppError::msg("The file no longer exists."))?;
+    if !meta.is_file() {
+        return Err(AppError::msg("It is not a file."));
+    }
+    if meta.len() > MAX_PREVIEW_BYTES {
+        return Err(AppError::msg("The file is too large to preview."));
+    }
+    Ok(tauri::ipc::Response::new(std::fs::read(&file)?))
+}
+
 /// Keeps only the file name part, without separators, so it cannot escape the target folder.
 fn pasted_file_name(raw: &str) -> String {
     let name = raw.rsplit(['/', '\\']).next().unwrap_or_default().trim().trim_start_matches('.');

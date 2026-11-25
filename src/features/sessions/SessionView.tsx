@@ -285,7 +285,7 @@ export function SessionView() {
             <Loader size="sm" />
           </Center>
         ) : (
-          <ChatItems items={items} streaming={streaming} working={session.status === "working"} />
+          <ChatItems sessionId={session.id} items={items} streaming={streaming} working={session.status === "working"} />
         )}
         <ApprovalPrompts session={session} />
         {session.status === "working" && <WorkingLine since={lastPromptAt(items)} tokens={turnTokens} streaming={streaming} background={session.backgroundTasks} />}
