@@ -385,7 +385,7 @@ const es: Record<string, string> = {
   "Initial list; it is read from Claude Code on startup": "Lista inicial; se lee de Claude Code al arrancar",
   "refreshes itself once a day. Priority when sending: message model → session → account → default.": "se actualiza sola una vez al día. Prioridad al enviar: modelo del mensaje → de la sesión → de la cuenta → por defecto.",
   "Claude sessions working at once": "Sesiones de Claude trabajando a la vez",
-  "Those over the limit wait in line.": "Las que excedan el límite quedan en cola.",
+  "Only chats that may edit code count; those over the limit wait in line. Questions (consult or plan mode) always start right away.": "Solo cuentan los chats que pueden editar código; los que pasen del límite esperan su turno. Las dudas (modo consulta o plan) siempre arrancan de inmediato.",
   "Applies to every open project.": "Aplica a todos los proyectos abiertos.",
   "For “Open in editor”. On macOS it is the app name (WebStorm, Visual Studio Code, Cursor…); on other systems, the command.": "Para «Abrir en editor». En macOS es el nombre de la app (WebStorm, Visual Studio Code, Cursor…); en otros sistemas, el comando.",
   "Notify me when a session finishes": "Avisarme cuando una sesión termine",

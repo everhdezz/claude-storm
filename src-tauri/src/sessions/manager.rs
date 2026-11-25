@@ -57,6 +57,9 @@ struct TokensEvent<'a> {
 #[derive(Default)]
 pub struct SessionManager {
     running: Mutex<HashMap<String, Arc<ProcessTree>>>,
+    /// Running sessions that only read (consult or plan mode): they do not count toward the
+    /// parallel limit, so questions never wait behind code work.
+    reading: Mutex<HashSet<String>>,
     stopping: Mutex<HashSet<String>>,
     /// Sessions interrupted by "Enviar ya": their pending messages go out as soon as they stop.
     send_now: Mutex<HashSet<String>>,
@@ -77,6 +80,12 @@ Answer questions and explanations directly, without a plan. Only when the user a
 investigate, then call ExitPlanMode with your plan: once it is accepted, ClaudeStorm picks the folder you will edit \
 (the main checkout or a new git worktree) and you implement it in the next turn.";
 
+/// A turn that cannot change code (consult chat or plan mode): it starts right away, whatever the
+/// parallel limit, since it only answers questions.
+fn is_read_only(session: &Session) -> bool {
+    (is_consult(session) && !session.repo_ids.is_empty()) || session.permission_mode == "plan"
+}
+
 /// A consult chat: it has not been asked to change anything yet, so it has no folder of its own.
 pub fn is_consult(session: &Session) -> bool {
     session.mode == SessionMode::Consult
@@ -96,6 +105,12 @@ impl SessionManager {
     /// True while a session has a live process.
     pub fn is_running(&self, id: &str) -> bool {
         self.running.lock().unwrap().contains_key(id) || self.preparing.lock().unwrap().contains(id)
+    }
+
+    /// Running sessions that may edit code: the ones the parallel limit applies to.
+    fn editing_count(&self) -> usize {
+        let reading = self.reading.lock().unwrap();
+        self.running.lock().unwrap().keys().filter(|id| !reading.contains(*id)).count()
     }
 
     /// Remembers that the user approved the plan of a session still without worktree.
@@ -155,7 +170,7 @@ impl SessionManager {
         let prompt = messages.iter().map(|m| m.prompt.as_str()).collect::<Vec<_>>().join("\n\n");
 
         let limit = store.read(|d| d.settings.max_parallel_sessions.max(1));
-        if self.running.lock().unwrap().len() >= limit {
+        if !is_read_only(session) && self.editing_count() >= limit {
             self.queue.lock().unwrap().push_back(Queued { session_id: session_id.into(), prompt, model });
             let updated = store.update_session(session_id, |s| {
                 s.status = SessionStatus::Queued;
@@ -389,6 +404,11 @@ impl SessionManager {
         let mut child = cmd.spawn().map_err(|e| AppError::msg(format!("Could not start claude: {e}")))?;
         let tree = Arc::new(ProcessTree::attach(&child)?);
         self.running.lock().unwrap().insert(session_id.to_string(), tree);
+        if consult || permission_mode == "plan" {
+            self.reading.lock().unwrap().insert(session_id.to_string());
+        } else {
+            self.reading.lock().unwrap().remove(session_id);
+        }
         // A new turn starts clean, even if an earlier stop left a stale flag behind.
         self.stopping.lock().unwrap().remove(session_id);
 
@@ -427,6 +447,7 @@ impl SessionManager {
             let stderr_text = err_task.await.unwrap_or_default();
             let manager = app.state::<SessionManager>();
             manager.running.lock().unwrap().remove(&id);
+            manager.reading.lock().unwrap().remove(&id);
             let stopped = manager.stopping.lock().unwrap().remove(&id);
             manager.finish(&app, &id, turn, status.ok().and_then(|s| s.code()), stopped, stderr_text);
             manager.dequeue(&app);
@@ -654,7 +675,7 @@ impl SessionManager {
     /// Starts queued prompts while there are free slots.
     fn dequeue<R: Runtime>(&self, app: &AppHandle<R>) {
         let limit = app.state::<Store>().read(|d| d.settings.max_parallel_sessions.max(1));
-        while self.running.lock().unwrap().len() < limit {
+        while self.editing_count() < limit {
             let Some(next) = self.queue.lock().unwrap().pop_front() else { return };
             if let Err(err) = self.start(app, &next.session_id, next.prompt, next.model) {
                 if let Ok(session) = app.state::<Store>().update_session(&next.session_id, |s| {

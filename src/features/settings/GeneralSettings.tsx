@@ -28,7 +28,7 @@ export function GeneralSettings() {
       />
       <NumberInput
         label={t("Claude sessions working at once")}
-        description={t("Those over the limit wait in line.")}
+        description={t("Only chats that may edit code count; those over the limit wait in line. Questions (consult or plan mode) always start right away.")}
         min={1}
         max={10}
         w={260}
